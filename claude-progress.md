@@ -13,6 +13,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 ## 当前已验证状态
 
 - **仓库根目录**：`/Users/e2uninova-m4/Desktop/test_project/out-from-vm`
+- **Git 仓库**：独立 git repo（remote `origin` → `https://github.com/biggeryounger/out-from-vm.git`，分支 `main`，首次提交 `ed65481`，72 files / 11927 insertions）
 - **标准启动路径**：
   - 发送端：`python3 -m sqr.cli send --file <path>`
   - 接收端：`python3 -m sqr.cli receive --output <path>`（默认 GUI 框选）
@@ -159,3 +160,36 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **下一步最佳动作**：
   1. 按需提交本次所有改动（init.sh + launcher/ + AGENTS.md + claude-progress.md + dist/）。
   2. 推进 `feature_list.json` 待办：`t1` 真实屏幕 e2e（需 VMware）或 `t2` PyInstaller 打包。
+
+### Session 004 — 架构文档 + 首次提交推送 GitHub
+
+- **日期**：2026-08-12
+- **本轮目标**：为整个 sqr 项目编写架构文档（顶层 + 各模块 ARCHITECTURE.md），然后做首次 git 提交并推送到 GitHub。
+- **已完成**：
+  1. **读取全部 11 个模块源文件**（protocol.py / cli.py / sender/{compressor,chunker,qr_render,player}.py / receiver/{capturer,decoder,assembler,verifier,runner,region_selector,app}.py / vendor/__init__.py）+ implementation-plan.md §1-3，为写文档建立事实基础。（注：派出的两个 explore agent `bg_ca4acf07`/`bg_3eefb200` 均卡死无输出，已 cancel，改为直接读文件。）
+  2. **写 4 份架构文档**：
+     - `ARCHITECTURE.md`（项目根）：整体架构图 + 分层设计 + SQ1 协议详解 + 关键技术决策（去 Pillow 化 / 循环播放 / 线程安全 / GUI 线程模型）+ 依赖矩阵 + 目录结构 + 入口点 + 模块文档导航。
+     - `sqr/sender/ARCHITECTURE.md`：发送端管线 compressor→chunker→qr_render→player，完整函数签名 + 数据流 + 三种渲染器对比。
+     - `sqr/receiver/ARCHITECTURE.md`：接收端管线 capturer→decoder→assembler→verifier→runner + GUI 边界（region_selector/app），线程安全模型，完整函数签名。
+     - `sqr/vendor/ARCHITECTURE.md`：PIL stub 机制 + sys.path bootstrap 顺序约束 + vendor 边界（勿改规则）。
+  3. **Git 初始化**：`git init -b main`（out-from-vm/ 成为独立 git repo，嵌套在父级 test_project/ gitee 仓库内）；写 `.gitignore`（排除 `.venv/` / `__pycache__/` / `dist/sqr-sender/` staging 目录 / `.omo/`）；`git remote add origin https://github.com/biggeryounger/out-from-vm.git`（用户提前建好的空 PUBLIC 仓库）。
+  4. **首次提交 + 推送**：`git add -A`（72 files）→ `git commit`（commit `ed65481`，"Initial commit: sqr (Screen QR Transfer)"）→ `gh auth setup-git` → `git push -u origin main`。**Session 001/002/003 的全部工作 + 本次架构文档全部包含在此首次提交中**。
+- **运行过的验证**：
+  - `python3 -m pytest tests/ -q` → **92 passed in 2.04s**（确认文档变更未影响代码，基线钉死）。
+  - `git push -u origin main` → `* [new branch] main -> main`（推送成功，GitHub 远端可见）。
+  - `glob **/ARCHITECTURE.md` → 4 个文件确认就位（根 + sender/receiver/vendor）。
+- **已记录证据**：无新增证据文件；本次是文档 + git 基建，`feature_list.json` 不涉及（`in_progress_id` 保持 `null`，无 sqr feature 状态变更）。
+- **提交记录**：✅ **已提交并推送** —— commit `ed65481` on `main`，remote `origin` → `https://github.com/biggeryounger/out-from-vm.git`。Session 001/002/003 未提交的工作一并归入此首次提交。
+- **更新过的文件或工件**：
+  - `ARCHITECTURE.md`（新建，项目根顶层架构文档）
+  - `sqr/sender/ARCHITECTURE.md`（新建）
+  - `sqr/receiver/ARCHITECTURE.md`（新建）
+  - `sqr/vendor/ARCHITECTURE.md`（新建）
+  - `.gitignore`（新建）
+  - `claude-progress.md`（本 Session 004 条目 + 顶部「当前已验证状态」加 Git 仓库信息）
+- **已知风险或未解决问题**：
+  1. **架构文档基于当前代码快照**：文档里的函数签名是本轮读取时的状态，后续代码演进需同步更新对应 ARCHITECTURE.md（建议纳入 AGENTS.md 工作流，但本轮不改 AGENTS.md）。
+  2. **out-from-vm 嵌套 git repo**：out-from-vm/ 现在是独立 git repo，与父级 test_project/ 的 gitee 仓库形成嵌套；父级仓库的 .gitignore 应排除 out-from-vm/ 否则 git 会当作 submodule 或忽略其内部变更。
+- **下一步最佳动作**：
+  1. 推进 `feature_list.json` 待办：`t1` 真实屏幕 e2e（需 VMware）或 `t2` PyInstaller 打包（无环境依赖，可立即开工）。
+  2. 后续代码变更时同步更新对应模块的 ARCHITECTURE.md。
