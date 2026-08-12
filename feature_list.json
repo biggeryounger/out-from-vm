@@ -1,0 +1,172 @@
+{
+  "_comment": "机器可读的功能清单。与本文件冲突时以本文件为准；claude-progress.md「待办清单」只是人眼速览视图。agent 任何时候只能有一个功能处于 in_progress。",
+  "schema_version": 1,
+  "updated": "2026-08-11",
+  "in_progress_id": null,
+  "features": [
+    {
+      "id": "p1-protocol-core",
+      "priority": 10,
+      "area": "protocol",
+      "title": "SQ1 协议核心层（Chunk / Manifest / CRC32 / 异常）",
+      "user_visible_behavior": "发送端能构造合法 SQ1 帧（含 index=0 manifest 帧），接收端能解析、CRC32 校验、拒绝版本/字段/CRC 错误的非法帧",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_protocol.py -q",
+        "python3 -m pytest tests/test_compressor.py -q",
+        "python3 -m pytest tests/test_chunker.py -q",
+        "三条命令均全绿，无 failed / error"
+      ],
+      "evidence": "基线 92 passed 中的 ~63 项（protocol ~30 + compressor ~15 + chunker ~18）。测试覆盖明细见 claude-progress.md「当前已验证状态 → 测试覆盖」。",
+      "notes": "Phase 1 完成。涉及文件：sqr/protocol.py、sqr/sender/compressor.py、sqr/sender/chunker.py。"
+    },
+    {
+      "id": "p2-vendor-qr-render",
+      "priority": 10,
+      "area": "sender",
+      "title": "Vendor qrcode + PIL stub + QR matrix 渲染（Canvas / PPM / Unicode）",
+      "user_visible_behavior": "在无 Pillow 的环境中，发送端能生成 QR matrix 并渲染为 PPM/Canvas/Unicode 三种形式之一，无导入错误",
+      "status": "passing",
+      "verification": [
+        "python3 -c \"import sqr.vendor; import qrcode; print('vendor OK')\" 在无 Pillow 环境下成功",
+        "python3 -m pytest tests/test_qr_render.py -q 全绿"
+      ],
+      "evidence": "基线 92 passed 中的 19 项（test_qr_render.py）。",
+      "notes": "Phase 2 完成。涉及文件：sqr/vendor/__init__.py（PIL stub）、sqr/vendor/qrcode/、sqr/sender/qr_render.py。去 Pillow 化是项目零安装的关键。"
+    },
+    {
+      "id": "p3-receiver-pipeline-e2e",
+      "priority": 10,
+      "area": "receiver",
+      "title": "接收端管线（decoder / assembler / verifier）+ 端到端 round-trip",
+      "user_visible_behavior": "文件 → 压缩 → 分片 → QR matrix → PPM → 解码 → 校验 → 还原，端到端字节级一致",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_roundtrip.py -q 全绿"
+      ],
+      "evidence": "基线 92 passed 中的 10 项（test_roundtrip.py，3 个 fixture：sample_small / sample_mid / sample_repetitive）。",
+      "notes": "Phase 3 完成。涉及文件：sqr/receiver/decoder.py、sqr/receiver/assembler.py、sqr/receiver/verifier.py。注意：这是 PPM-based round-trip，不是真实屏幕 round-trip（后者见 t1-real-screen-e2e）。"
+    },
+    {
+      "id": "p4-screen-io",
+      "priority": 10,
+      "area": "io",
+      "title": "屏幕 I/O 层（tkinter 播放器 + mss 截图器 + CLI）",
+      "user_visible_behavior": "发送端能 tkinter 全屏循环播放 QR 序列（ESC 退出）；接收端能 mss 固定区域截图；cli.py 暴露 send/receive 子命令",
+      "status": "passing",
+      "verification": [
+        "手动：python3 -m sqr.cli send --file <small.txt> 全屏窗口出现，QR 显示，info 栏正确，ESC 退出",
+        "手动：python3 -m sqr.cli receive --region x,y,w,h --output out.txt 启动不报错，能截图保存",
+        "python3 -m sqr.cli send --help / receive --help 正常打印"
+      ],
+      "evidence": "代码集成完成（cli.py 调通 sender/receiver 链路）；本特性为手动验证，无独立自动化测试。下轮若做 t1-real-screen-e2e 会顺带补强本特性的证据。",
+      "notes": "Phase 4 完成。涉及文件：sqr/sender/player.py、sqr/receiver/capturer.py、sqr/receiver/runner.py、sqr/cli.py。"
+    },
+    {
+      "id": "p5-packaging-tier1",
+      "priority": 10,
+      "area": "packaging",
+      "title": "Tier 1 打包：发送端源码 zip（零安装）",
+      "user_visible_behavior": "执行 build/bundle_sender.py 产出 dist/sqr-sender-src.zip，解压后 ./send.sh <file> 在仅有 Python 3.6+ 的环境直接启动，无需 pip",
+      "status": "passing",
+      "verification": [
+        "ls -la dist/sqr-sender-src.zip 确认存在，体积 ~44KB",
+        "unzip -l dist/sqr-sender-src.zip 含 sqr/、send.sh、send.bat、README.txt",
+        "解压到临时目录后 python3 -c \"import sys; sys.path.insert(0,'.'); import sqr.vendor; import qrcode\" 成功"
+      ],
+      "evidence": "dist/sqr-sender-src.zip 存在，44KB（原 PROCESS.md §五记录，已迁入 claude-progress.md Session 001 历史）。",
+      "notes": "Phase 5 完成（仅 Tier 1）。Tier 2 PyInstaller 见 t2-packaging-tier2。涉及文件：build/bundle_sender.py、launcher/send.sh、launcher/send.bat。"
+    },
+    {
+      "id": "p6-gui-region-selector",
+      "priority": 10,
+      "area": "receiver",
+      "title": "GUI 区域选择器（全屏拖拽框选 QR 区域）",
+      "user_visible_behavior": "运行 python3 -m sqr.cli receive --output out.txt（不带 --region）时，弹出全屏暗化覆盖层，鼠标拖拽框选 QR 区域，ENTER 确认 / ESC 取消 / 重新拖拽可修改",
+      "status": "passing",
+      "verification": [
+        "手动：python3 -m sqr.cli receive --output out.txt 进入框选模式",
+        "手动：拖拽时实时显示 宽x高 px，ENTER 后进入接收主循环",
+        "tkinter 缺失场景：卸载 tkinter 后启动应打印友好错误而非 traceback"
+      ],
+      "evidence": "代码集成到 cli.py 的默认行为（--select 模式）；本特性为手动验证，无独立自动化测试。修复记录：ImageTk.PhotoImage 必须在 tk.Tk() 之后创建；tkinter 延迟导入 + ImportError 友好提示。",
+      "notes": "Phase 6 完成。涉及文件：sqr/receiver/region_selector.py。"
+    },
+    {
+      "id": "t1-real-screen-e2e",
+      "priority": 10,
+      "area": "e2e",
+      "title": "真实屏幕端到端验证（VMware + 物理 QR 播放 + 截图）",
+      "user_visible_behavior": "在真实 VMware 环境下：内网发送端全屏播放 QR 序列 → 外网接收端 mss 截图 → 还原文件 → MD5 与字节数与源文件完全一致",
+      "status": "blocked",
+      "verification": [
+        "在 VMware 内启动 python3 -m sqr.cli send --file tests/fixtures/sample_mid.txt",
+        "在外网运行 python3 -m sqr.cli receive --output received.txt（GUI 框选内网窗口）",
+        "diff tests/fixtures/sample_mid.txt received.txt 应无差异",
+        "md5 received.txt 应为 fd3b2ff5b10c902575332e8bbdd616f9（29816 bytes）— 或对应 fixture 的实际 MD5"
+      ],
+      "evidence": "",
+      "notes": "**环境 blocker，非代码 blocker**——需要可用的 VMware + 内网发送端屏幕 + 外网截图三件套。项目验收（screen-qr-transfer.md §10）最后一公里。优先级最高。"
+    },
+    {
+      "id": "t2-packaging-tier2",
+      "priority": 20,
+      "area": "packaging",
+      "title": "Tier 2 打包：PyInstaller 单文件可执行程序（内嵌 Python）",
+      "user_visible_behavior": "在无 Python 的内网机器上，解压 sqr-sender-linux.tar.gz 后 ./sqr-sender/sqr-sender <file> 直接启动",
+      "status": "not_started",
+      "verification": [
+        "pip install pyinstaller && python3 build/bundle_sender.py --tier 2 产出 dist/sqr-sender/",
+        "在干净 Docker 容器（无 Python）中运行 dist/sqr-sender --help 正常打印",
+        "vendor 目录被 PyInstaller 正确打包（spec 中 datas 配置 sqr/vendor）"
+      ],
+      "evidence": "",
+      "notes": "设计已规划在 implementation-plan.md §13.3。需在与内网相同 OS/arch 的机器上构建。tkinter + Tcl/Tk 由 PyInstaller 自动内嵌。"
+    },
+    {
+      "id": "t3-opencv-decoder-fallback",
+      "priority": 30,
+      "area": "receiver",
+      "title": "opencv 解码后备路径（pyzbar 失败时自动回退）",
+      "user_visible_behavior": "当 pyzbar 解码失败（如 macOS libzbar 签名问题），接收端自动尝试 opencv QRCodeDetector，不中断采集",
+      "status": "not_started",
+      "verification": [
+        "新增测试：mock pyzbar.decode 抛异常 → 验证 decoder.decode_qr 回退到 cv2 路径",
+        "新增测试：两者都失败时返回 None（不抛异常）",
+        "python3 -m pytest tests/test_decoder.py -q 全绿"
+      ],
+      "evidence": "",
+      "notes": "代码已存在于 sqr/receiver/decoder.py，仅缺测试覆盖。implementation-plan.md §8.2 描述了实现意图。"
+    },
+    {
+      "id": "t4-zstd-compression",
+      "priority": 40,
+      "area": "sender",
+      "title": "zstd 压缩模式（--zstd 标志）",
+      "user_visible_behavior": "python3 -m sqr.cli send --file <path> --zstd 启用 zstd-19 压缩；无 zstandard 包时自动回退 gzip 并打印警告",
+      "status": "not_started",
+      "verification": [
+        "pip install zstandard 后 pytest tests/test_compressor.py 中 zstd 用例通过",
+        "卸载 zstandard 后 send --zstd 应回退 gzip 并打印 warning",
+        "端到端：send --zstd → round-trip → 还原字节一致"
+      ],
+      "evidence": "",
+      "notes": "代码已存在于 sqr/sender/compressor.py（默认 gzip），仅缺测试与端到端验证。"
+    },
+    {
+      "id": "t5-large-file-transfer",
+      "priority": 40,
+      "area": "e2e",
+      "title": "大文件传输（100KB+）稳定性",
+      "user_visible_behavior": "100KB+ 文本文件能通过多轮 QR 循环播放稳定传输，接收端补采缺失帧直到完整还原",
+      "status": "not_started",
+      "verification": [
+        "新增 100KB+ fixture（重复文本或合并现有 fixture）",
+        "pytest tests/test_roundtrip.py 跑大文件用例通过",
+        "真实屏幕测试（依赖 t1）观察多轮播放 + 补采行为"
+      ],
+      "evidence": "",
+      "notes": "目前 test_roundtrip.py fixture 最大 ~10KB。100KB+ 文件意味着数十帧 QR，需要验证接收端循环补采逻辑。"
+    }
+  ]
+}

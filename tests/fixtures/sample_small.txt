@@ -1,0 +1,19 @@
+# report_qor -delay -max_density -slack_lesser_than -10
+
+report_qor is an Innovus command that reports Quality of Results metrics.
+
+Syntax:
+  report_qor
+    [-delay]
+    [-max_density <float>]
+    [-slack_lesser_than <float>]
+
+Parameters:
+  -delay (bool, optional): Report delay information.
+  -max_density (float, optional): Maximum density threshold.
+  -slack_lesser_than (float, optional): Report paths with slack less than this value.
+
+Examples:
+  report_qor
+  report_qor -delay -max_density 0.8
+  report_qor -slack_lesser_than -10.5
