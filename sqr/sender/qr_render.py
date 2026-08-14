@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import List
 
@@ -203,3 +204,437 @@ def matrix_to_unicode(qr_matrix: QRMatrix) -> str:
         lines.append("".join(line))
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# 渲染器 D：HTML 网格（SVG + 分页 + Prev/Next/Auto 按钮）
+# ---------------------------------------------------------------------------
+
+
+_GRID_CSS = """<style>
+body { margin: 0; background: #fff; font-family: -apple-system, sans-serif; }
+.info-bar { padding: 8px 12px; background: #222; color: #fff; font-family: monospace; font-size: 13px; }
+.qr-page { padding: 12px; }
+.qr-grid { display: grid; gap: 18px; }
+.qr-cell { background: #fff; padding: 10px; border: 1px solid #ddd; text-align: center; }
+.qr-svg { width: 100%; height: auto; max-width: 320px; display: block; margin: 0 auto; }
+.qr-label { font-size: 12px; margin-top: 6px; color: #333; font-family: monospace; }
+.controls { position: fixed; bottom: 0; left: 0; right: 0; background: #f0f0f0; padding: 10px;
+            display: flex; justify-content: center; gap: 14px; align-items: center; border-top: 1px solid #ccc; }
+.controls button { padding: 6px 14px; cursor: pointer; font-size: 14px; }
+#page-indicator { font-family: monospace; min-width: 110px; text-align: center; }
+#player-stage { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+                background: #000; display: none; align-items: center; justify-content: center;
+                z-index: 5; }
+#player-stage .qr-svg { width: 90vmin; height: 90vmin; display: block; }
+</style>"""
+
+_CYCLE_CSS = """<style>
+html, body { margin: 0; padding: 0; height: 100%; background: #000; overflow: hidden;
+              font-family: -apple-system, sans-serif; }
+.info-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+            padding: 6px 12px; background: #222; color: #fff;
+            font-family: monospace; font-size: 13px; }
+.qr-page { height: 100vh; display: flex; align-items: center; justify-content: center; }
+.qr-cell { background: #fff; padding: 1vmin; }
+.qr-svg { width: 90vmin; height: 90vmin; display: block; }
+.qr-label { display: none; }
+.controls { position: fixed; bottom: 0; left: 0; right: 0; background: #f0f0f0;
+            padding: 8px; display: flex; justify-content: center; gap: 14px;
+            align-items: center; border-top: 1px solid #ccc; z-index: 10; }
+.controls button { padding: 6px 14px; cursor: pointer; font-size: 14px; }
+#page-indicator { font-family: monospace; min-width: 110px; text-align: center; }
+</style>"""
+
+_GRID_JS_TEMPLATE = """<script>
+(function () {
+    var pages = document.querySelectorAll('.qr-page');
+    var cells = document.querySelectorAll('.qr-cell');
+    var totalPages = pages.length;
+    var totalFrames = cells.length;
+    var currentPage = 0;
+    var currentFrame = 0;
+    var playMode = "__PLAY_MODE__";
+    var autoCycle = __AUTO_CYCLE__;
+    var intervalMs = __INTERVAL_MS__;
+    var timer = null;
+    var indicator = document.getElementById('page-indicator');
+    var autoBtn = document.getElementById('auto-btn');
+    var stage = document.getElementById('player-stage');
+
+    function showPage(idx) {
+        for (var i = 0; i < pages.length; i++) {
+            pages[i].style.display = (i === idx) ? '' : 'none';
+        }
+        currentPage = idx;
+        if (indicator) {
+            indicator.textContent = 'Page ' + (idx + 1) + ' / ' + totalPages;
+        }
+    }
+
+    function showFrame(idx) {
+        currentFrame = idx;
+        if (stage && cells[idx]) {
+            var svg = cells[idx].querySelector('.qr-svg');
+            if (svg) {
+                stage.innerHTML = '';
+                stage.appendChild(svg.cloneNode(true));
+            }
+        }
+        if (indicator) {
+            indicator.textContent = 'Frame ' + (idx + 1) + ' / ' + totalFrames;
+        }
+    }
+
+    function enterPlayer() {
+        for (var i = 0; i < pages.length; i++) { pages[i].style.display = 'none'; }
+        if (stage) { stage.style.display = 'flex'; }
+        showFrame(currentFrame);
+    }
+
+    function exitPlayer() {
+        if (stage) { stage.style.display = 'none'; stage.innerHTML = ''; }
+        showPage(currentPage);
+    }
+
+    function gotoNextFrame() { if (totalFrames > 1) showFrame((currentFrame + 1) % totalFrames); }
+    function gotoPrevFrame() { if (totalFrames > 1) showFrame((currentFrame - 1 + totalFrames) % totalFrames); }
+    function gotoNextPage() { if (totalPages > 1) showPage((currentPage + 1) % totalPages); }
+    function gotoPrevPage() { if (totalPages > 1) showPage((currentPage - 1 + totalPages) % totalPages); }
+
+    function startAuto() {
+        if (timer) { clearInterval(timer); }
+        timer = setInterval(playMode === 'frame' ? gotoNextFrame : gotoNextPage, intervalMs);
+    }
+    function stopAuto() { if (timer) { clearInterval(timer); timer = null; } }
+
+    function toggleAuto() {
+        autoCycle = !autoCycle;
+        if (autoBtn) { autoBtn.textContent = autoCycle ? 'Auto: ON' : 'Auto: OFF'; }
+        if (autoCycle) {
+            if (playMode === 'frame') { enterPlayer(); }
+            startAuto();
+        } else {
+            stopAuto();
+            if (playMode === 'frame') { exitPlayer(); }
+        }
+    }
+
+    document.getElementById('prev-btn').addEventListener('click', function () {
+        if (playMode === 'frame' && autoCycle) { gotoPrevFrame(); startAuto(); }
+        else { gotoPrevPage(); }
+    });
+    document.getElementById('next-btn').addEventListener('click', function () {
+        if (playMode === 'frame' && autoCycle) { gotoNextFrame(); startAuto(); }
+        else { gotoNextPage(); }
+    });
+    if (autoBtn) { autoBtn.addEventListener('click', toggleAuto); }
+
+    showPage(0);
+    if (autoCycle) {
+        if (playMode === 'frame') { enterPlayer(); }
+        startAuto();
+    }
+})();
+</script>"""
+
+
+_ZIP_JS = """<script>
+(function () {
+    var zipBtn = document.getElementById('save-zip-btn');
+    if (!zipBtn) return;
+
+    var CRC_TABLE = (function () {
+        var t = new Array(256);
+        for (var n = 0; n < 256; n++) {
+            var c = n;
+            for (var k = 0; k < 8; k++) {
+                c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+            }
+            t[n] = c >>> 0;
+        }
+        return t;
+    })();
+
+    function crc32(bytes) {
+        var c = 0xFFFFFFFF;
+        for (var i = 0; i < bytes.length; i++) {
+            c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+        }
+        return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function u16(n) { return String.fromCharCode(n & 0xFF, (n >>> 8) & 0xFF); }
+    function u32(n) { return String.fromCharCode(n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF); }
+    function pad(n, len) { var s = String(n); while (s.length < len) s = '0' + s; return s; }
+
+    function bytesToBinStr(bytes) {
+        var out = '';
+        for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+        return out;
+    }
+
+    function buildZip(files) {
+        var locals = [];
+        var centrals = [];
+        var offset = 0;
+        for (var i = 0; i < files.length; i++) {
+            var nameBytes = '';
+            for (var j = 0; j < files[i].name.length; j++) {
+                nameBytes += String.fromCharCode(files[i].name.charCodeAt(j) & 0xFF);
+            }
+            var dataBin = bytesToBinStr(files[i].data);
+            var crc = crc32(files[i].data);
+            var size = files[i].data.length;
+
+            locals.push(u32(0x04034b50) + u16(20) + u16(0) + u16(0) + u16(0) + u16(0)
+                + u32(crc) + u32(size) + u32(size)
+                + u16(files[i].name.length) + u16(0) + nameBytes);
+            locals.push(dataBin);
+
+            centrals.push(u32(0x02014b50) + u16(20) + u16(20) + u16(0) + u16(0) + u16(0) + u16(0)
+                + u32(crc) + u32(size) + u32(size)
+                + u16(files[i].name.length) + u16(0) + u16(0) + u16(0) + u16(0) + u32(0) + u32(offset) + nameBytes);
+
+            offset += 30 + files[i].name.length + size;
+        }
+        var centralBlob = centrals.join('');
+        var centralOffset = offset;
+
+        var eocd = u32(0x06054b50) + u16(0) + u16(0)
+            + u16(files.length) + u16(files.length)
+            + u32(centralBlob.length) + u32(centralOffset) + u16(0);
+
+        return locals.join('') + centralBlob + eocd;
+    }
+
+    function svgToPng(svgEl, pxPerModule, cb) {
+        var modules = 33;
+        var vb = svgEl.getAttribute('viewBox');
+        if (vb) {
+            var parts = vb.split(/\\s+/);
+            modules = parseInt(parts[2], 10) || 33;
+        }
+        var px = modules * pxPerModule;
+        var svgStr = new XMLSerializer().serializeToString(svgEl);
+        var url = URL.createObjectURL(new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' }));
+        var img = new Image();
+        img.onload = function () {
+            try {
+                var canvas = document.createElement('canvas');
+                canvas.width = px; canvas.height = px;
+                var ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, px, px);
+                ctx.drawImage(img, 0, 0, px, px);
+                var b64 = canvas.toDataURL('image/png').split(',')[1];
+                var bin = atob(b64);
+                var bytes = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                cb(bytes);
+            } catch (e) {
+                cb(null);
+            } finally {
+                URL.revokeObjectURL(url);
+            }
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); cb(null); };
+        img.src = url;
+    }
+
+    zipBtn.addEventListener('click', function () {
+        var svgs = document.querySelectorAll('.qr-cell .qr-svg');
+        if (!svgs.length) { alert('No QR frames to save.'); return; }
+        var total = svgs.length;
+        var padLen = String(total).length;
+        var results = new Array(total);
+        var done = 0;
+        var failed = 0;
+        var origText = zipBtn.textContent;
+        zipBtn.disabled = true;
+
+        for (var i = 0; i < total; i++) {
+            (function (idx, el) {
+                svgToPng(el, 10, function (bytes) {
+                    if (bytes) {
+                        results[idx] = { name: 'qr_' + pad(idx, padLen) + '.png', data: bytes };
+                    } else { failed++; }
+                    done++;
+                    zipBtn.textContent = 'Zipping ' + done + '/' + total;
+                    if (done === total) {
+                        if (failed) {
+                            zipBtn.disabled = false;
+                            zipBtn.textContent = origText;
+                            alert('Failed to render ' + failed + ' frame(s).');
+                            return;
+                        }
+                        var files = results.filter(Boolean);
+                        var zipStr = buildZip(files);
+                        var zipBytes = new Uint8Array(zipStr.length);
+                        for (var n = 0; n < zipStr.length; n++) zipBytes[n] = zipStr.charCodeAt(n) & 0xFF;
+                        var blob = new Blob([zipBytes], { type: 'application/zip' });
+                        var a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = 'qr_frames.zip';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+                        zipBtn.disabled = false;
+                        zipBtn.textContent = origText;
+                    }
+                });
+            })(i, svgs[i]);
+        }
+    });
+})();
+</script>"""
+
+
+def _matrix_to_svg(matrix: QRMatrix) -> str:
+    n = matrix.module_count
+    qz = matrix.quiet_zone
+    total = n + 2 * qz
+    parts = [
+        '<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg" '
+        'class="qr-svg" shape-rendering="crispEdges">' % (total, total),
+        '<rect width="%d" height="%d" fill="#ffffff"/>' % (total, total),
+    ]
+    for r in range(n):
+        row = matrix.matrix[r]
+        for c in range(n):
+            if row[c]:
+                parts.append(
+                    '<rect x="%d" y="%d" width="1" height="1" fill="#000000"/>'
+                    % (c + qz, r + qz)
+                )
+    parts.append('</svg>')
+    return "".join(parts)
+
+
+def _build_grid_js(
+    auto_cycle: bool, page_interval_ms: int, play_mode: str = "page"
+) -> str:
+    return (
+        _GRID_JS_TEMPLATE
+        .replace("__PLAY_MODE__", play_mode)
+        .replace("__AUTO_CYCLE__", "true" if auto_cycle else "false")
+        .replace("__INTERVAL_MS__", str(page_interval_ms))
+    )
+
+
+def matrices_to_html_grid(
+    matrices: List[QRMatrix],
+    cols: int = 4,
+    rows_per_page: int = 4,
+    page_interval_ms: int = 3000,
+    auto_cycle: bool = False,
+    file_id: str = "",
+    filename: str = "",
+    layout: str = "grid",
+) -> str:
+    """将全部 QR 矩阵渲染成单文件静态 HTML（SVG 网格 + 自动分页 + 按钮翻页）。
+
+    Args:
+        matrices: 全部帧的 QR 矩阵（index 0 = manifest，其余为 data）。
+        cols: 每页网格列数。
+        rows_per_page: 每页网格行数（每页 = cols * rows_per_page 个 QR）。
+        page_interval_ms: Auto 轮播时翻页间隔（毫秒）。
+        auto_cycle: 是否自动轮播（默认 False，手动 Prev/Next）。
+        file_id: 显示在信息栏的 file_id。
+        filename: 显示在信息栏的文件名。
+        layout: "grid"（网格，默认）或 "cycle"（全屏单 QR 自动循环）。
+            grid: Auto OFF = 多张 QR 分页概览（Prev/Next 翻页）；
+                  Auto ON = 进入全屏播放舞台，逐张 QR 轮播。
+            cycle: 强制 cols=1/rows_per_page=1/auto_cycle=True，每页 1 张，
+                   翻页即逐张。
+
+    Returns:
+        完整 HTML 文档字符串，可直接 .write_text() 落盘。
+
+    Raises:
+        ValueError: matrices 为空，cols / rows_per_page < 1，或 layout 非法。
+    """
+    if not matrices:
+        raise ValueError("matrices must not be empty")
+    if layout not in ("grid", "cycle"):
+        raise ValueError(
+            "layout must be 'grid' or 'cycle', got %r" % layout
+        )
+
+    if layout == "cycle":
+        cols = 1
+        rows_per_page = 1
+        auto_cycle = True
+
+    if cols < 1:
+        raise ValueError("cols must be >= 1, got %d" % cols)
+    if rows_per_page < 1:
+        raise ValueError("rows_per_page must be >= 1, got %d" % rows_per_page)
+
+    total = len(matrices)
+    total_data = max(0, total - 1)
+    per_page = cols * rows_per_page
+    num_pages = math.ceil(total / per_page)
+
+    pages_html: List[str] = []
+    for page_idx in range(num_pages):
+        start = page_idx * per_page
+        end = min(start + per_page, total)
+        cells: List[str] = []
+        for i in range(start, end):
+            matrix = matrices[i]
+            label = "MANIFEST" if i == 0 else "DATA %d/%d" % (i, total_data)
+            cells.append(
+                '<div class="qr-cell">'
+                + _matrix_to_svg(matrix)
+                + '<div class="qr-label">' + label + '</div>'
+                + '</div>'
+            )
+        pages_html.append(
+            '<section class="qr-page" id="page-%d">' % (page_idx + 1)
+            + '<div class="qr-grid" style="grid-template-columns: repeat(%d, 1fr);">' % cols
+            + "".join(cells)
+            + '</div>'
+            + '</section>'
+        )
+
+    auto_label = "Auto: ON" if auto_cycle else "Auto: OFF"
+    info_bar = (
+        '<div class="info-bar">'
+        'file_id: ' + (file_id or "-") + ' | '
+        + (filename or "-") + ' | '
+        + '%d frames | %d page(s)' % (total, num_pages)
+        + '</div>'
+    )
+    controls = (
+        '<div class="controls">'
+        '<button id="prev-btn">&#9664; Prev</button>'
+        '<span id="page-indicator">Page 1 / %d</span>' % num_pages
+        + '<button id="next-btn">Next &#9654;</button>'
+        + '<button id="auto-btn">' + auto_label + '</button>'
+        + '<button id="save-zip-btn">Save ZIP</button>'
+        + '</div>'
+    )
+
+    play_mode = "frame" if layout == "grid" else "page"
+    stage_html = '<div id="player-stage"></div>\n' if layout == "grid" else ""
+
+    body = (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n<head>\n<meta charset="utf-8">\n'
+        + "<title>SQR %s - %s</title>\n" % (
+            "Cycle" if layout == "cycle" else "Grid",
+            filename or "transfer",
+        )
+        + (_CYCLE_CSS if layout == "cycle" else _GRID_CSS)
+        + "\n</head>\n<body>\n"
+        + info_bar + "\n"
+        + controls + "\n"
+        + stage_html
+        + "\n".join(pages_html) + "\n"
+        + _build_grid_js(auto_cycle, page_interval_ms, play_mode) + "\n"
+        + _ZIP_JS + "\n"
+        + "</body>\n</html>\n"
+    )
+    return body
