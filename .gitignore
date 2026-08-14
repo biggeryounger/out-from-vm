@@ -21,3 +21,9 @@ Thumbs.db
 
 # Tool state (opencode/agent session data)
 .omo/
+
+# Playwright MCP artifacts (screenshots/logs/downloads)
+.playwright-mcp/
+
+# Generated QR HTML (large, regenerable from source via cli send)
+out.html

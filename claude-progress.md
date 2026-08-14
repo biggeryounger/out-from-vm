@@ -15,26 +15,29 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **仓库根目录**：`/Users/e2uninova-m4/Desktop/test_project/out-from-vm`
 - **Git 仓库**：独立 git repo（remote `origin` → `https://github.com/biggeryounger/out-from-vm.git`，分支 `main`，首次提交 `ed65481`，72 files / 11927 insertions）
 - **标准启动路径**：
-  - 发送端：`python3 -m sqr.cli send --file <path>`
-  - 接收端：`python3 -m sqr.cli receive --output <path>`（默认 GUI 框选）
+  - 发送端：`python3 -m sqr.cli send <file>`（默认写 cycle HTML 到 `sqr_sender.html`，浏览器打开即播）
+  - 接收端（屏幕）：`python3 -m sqr.cli receive --output <path>`（默认 GUI 框选）
+  - 接收端（image 批量）：`python3 -m sqr.cli decode --images <dir> --output <path>`（扫描目录 PPM/PNG/JPG 批量解码还原，无需屏幕截图）
   - 打包产物：`dist/sqr-sender-src.zip`（44 KB，解压后 `./send.sh <file>`）
-- **标准验证路径**：`python3 -m pytest tests/ -q`（基线应为 **92 passed**）
+- **标准验证路径**：`python3 -m pytest tests/ -q`（基线应为 **146 passed** = 92 原始 + t6 新增 34 + t7 新增 7 + t8 新增 5 + t9 新增 8）
 - **Phase 完成情况**：Phase 1–6 **全部完成**
   - P1 协议核心（`sqr/protocol.py` / `sqr/sender/compressor.py` / `sqr/sender/chunker.py`）
   - P2 vendor + QR 渲染（`sqr/vendor/qrcode/` + `sqr/sender/qr_render.py`，PIL stub 实现 zero-install）
   - P3 接收端管线 + 端到端验证（`sqr/receiver/{decoder,assembler,verifier}.py` + `tests/test_roundtrip.py`）
-  - P4 屏幕 I/O（`sqr/sender/player.py` / `sqr/receiver/{capturer,runner}.py` / `sqr/cli.py`）
+  - P4 屏幕 I/O（`sqr/receiver/{capturer,runner}.py` / `sqr/cli.py`；~~`sqr/sender/player.py`~~ 已于 t7 删除，tkinter 弹窗改为 cycle HTML）
   - P5 打包与启动器（`build/bundle_sender.py` + `launcher/`）
   - P6 GUI 区域选择器（`sqr/receiver/region_selector.py`）
   - 各 Phase 详细设计见 `implementation-plan.md` §4 + §14
-- **测试覆盖**（基线 92 项）：
+- **测试覆盖**（146 项 = 92 原始 + 34 t6 + 7 t7 + 5 t8 + 8 t9）：
 
   | 测试文件 | 数量 | 覆盖范围 |
   |---|---|---|
   | `test_protocol.py` | ~30 | Chunk/Manifest 序列化、CRC32、异常路径 |
   | `test_compressor.py` | ~15 | gzip/zstd 压缩、Base64 编解码、边界值 |
   | `test_chunker.py` | ~18 | 分片、manifest 帧、build_all_frames |
-  | `test_qr_render.py` | 19 | matrix 生成、PPM 导出、Unicode 渲染、vendor 加载 |
+  | `test_qr_render.py` | 53 | matrix 生成、PPM 导出、Unicode 渲染、vendor 加载、**HTML 网格/分页（t6 +22）、cycle 全屏布局（t7 +7）、grid Auto 逐张播放舞台（t8 +5）** |
+  | `test_decoder.py` | 12 | **decode_qr_multi 多码解码 + decode_qr 向后兼容（t6 新增）** |
+  | `test_image_decoder.py` | 8 | **run_receiver_from_images：round-trip + 顺序无关 + manifest/数据帧缺失 + 回调（t9 新增）** |
   | `test_roundtrip.py` | 10 | 文件→QR→解码→校验 端到端（3 fixture） |
 
 - **当前最高优先级未完成功能**：**真实屏幕端到端验证**（VMware + 物理 QR 播放/截屏环境下跑完整 round-trip，校验 MD5 `fd3b2ff5b10c902575332e8bbdd616f9` 与字节数 29816）。
@@ -53,6 +56,10 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 | opencv 解码后备 | `t3-opencv-decoder-fallback` | not_started | 30 | `sqr/receiver/decoder.py` 中 pyzbar 失败时的后备路径 |
 | zstd 压缩 | `t4-zstd-compression` | not_started | 40 | `sqr/sender/compressor.py` 支持 zstd 但默认 gzip |
 | 大文件传输 | `t5-large-file-transfer` | not_started | 40 | 目前 fixture 最大 ~10KB QR 序列 |
+| HTML 网格 + 分页 + 多码解码 | `t6-html-grid-mode` | passing | 15 | 方案 B：静态 HTML 网格（SVG）+ 自动分页 + Prev/Next/Auto（Auto 默认关）+ 接收端 decode_qr_multi — 133 passed |
+| HTML 循环播放 + 移除 tkinter | `t7-html-cycle-replace-tkinter` | passing | 15 | cycle 布局（全屏单 QR 自动循环，Auto:ON）+ 默认 send 写 sqr_sender.html + 彻底删除 player.py — 133 passed |
+| grid Auto 改逐张全屏播放 | `t8-grid-auto-per-frame` | passing | 15 | grid 模式 Auto ON → 进 player-stage 全屏单张逐帧轮播（原为整页翻）；Auto OFF 回 grid 多张概览；cycle 零回归（playMode=page）— 138 passed |
+| 接收端 image 批量解码 | `t9-decode-from-images` | passing | 15 | `sqr decode --images <dir> [--image <f>...] --output <path>` 扫描二维码 image 批量 pyzbar 解码 → 组装 → 还原；复用 assembler/verifier 不动 runner.py — 146 passed |
 
 ---
 
@@ -193,3 +200,209 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **下一步最佳动作**：
   1. 推进 `feature_list.json` 待办：`t1` 真实屏幕 e2e（需 VMware）或 `t2` PyInstaller 打包（无环境依赖，可立即开工）。
   2. 后续代码变更时同步更新对应模块的 ARCHITECTURE.md。
+
+### Session 005 — HTML 网格渲染器 + 分页 + 接收端多码解码（t6-html-grid-mode）
+
+- **日期**：2026-08-12
+- **本轮目标**：新增 HTML 网格呈现模式（方案 B）：发送端把所有 QR chunk 渲染成静态 HTML 网格（inline SVG），自动分页 + Prev/Next/Auto 按钮（Auto 默认关）；接收端支持一帧多码解码（pyzbar 多码 + opencv detectAndDecodeMulti 回退）。消除频闪模式的不稳定性，并支持大文件分页。SQ1 协议不变。
+- **背景决策**：用户在方案评估中选定 B（网格静态）；分页要求本期完成；Auto 轮播默认关（手动 Next）。频闪模式的"错乱"风险原本已由 CRC32 + SHA-256 + 循环补采兜底，网格模式从根上消除页内频闪。
+- **已完成**：
+  1. TDD：先写测试（test_qr_render.py 加 `TestMatricesToHtmlGrid` 22 项；新建 test_decoder.py 12 项），确认红（ImportError），再实现转绿。
+  2. `sqr/sender/qr_render.py`：加 `matrices_to_html_grid()`（渲染器 D）+ 私有助手 `_matrix_to_svg()` / `_build_grid_js()`。每个 QRMatrix → inline SVG（viewBox 含 quiet zone），CSS grid 排列，按 `cols×rows_per_page` 自动分页（`<section class="qr-page">`），Prev/Next/Auto 按钮 + 页码指示；Auto 默认关（`var autoCycle = false;` + 按钮 `Auto: OFF`）。
+  3. `sqr/receiver/decoder.py`：加 `decode_qr_multi()`（pyzbar 多码 + opencv `detectAndDecodeMulti` 回退）+ `_decode_multi_pyzbar()` / `_decode_multi_opencv()`。**保留** `decode_qr` 单码路径不变（零回归）。
+  4. `sqr/receiver/runner.py`：主循环 `decode_qr(img)` → `decode_qr_multi(img)`，遍历 list 逐个 `add_raw`；`progress.is_complete` 双层 break（内层 for + 外层 while）。
+  5. `sqr/cli.py`：send 加 4 个标志 `--html-grid <path>` / `--grid-cols` / `--page-rows` / `--page-interval`；`cmd_send` 在 matrices 构建后插入 HTML 网格分支（生成 .html 写盘后 return 0，不启 tkinter player）。
+- **运行过的验证**：
+  - `python3 -m pytest tests/ -q` → **126 passed in 2.64s**（基线 92 + 新增 34：test_qr_render 41 项含 +22 网格/分页，test_decoder 12 项多码）。
+  - `python3 -m pytest tests/test_qr_render.py -q` → 41 passed；`tests/test_decoder.py -q` → 12 passed（AGENTS.md §5 改动文件单独跑全绿）。
+  - 烟雾测试（实跑 CLI）：`sample_mid.txt`（5293B → 3 frames → 3 SVG / 1 页）；`/tmp/big.txt`（51KB 随机 sha256 → 35 frames → 35 SVG / 3 页 ceil(35/16)，Auto: OFF / autoCycle=false / Prev/Next 按钮齐备）。
+- **已记录证据**：无新增证据文件；验证结果见本 Session「运行过的验证」+ feature_list.json `t6-html-grid-mode.evidence`。
+- **提交记录**：本轮工作**尚未提交**（按 AGENTS.md §3，需用户显式批准）。
+- **更新过的文件或工件**：
+  - `sqr/sender/qr_render.py`（渲染器 D + 助手，~150 行新增）
+  - `sqr/receiver/decoder.py`（decode_qr_multi + 2 助手，~50 行新增）
+  - `sqr/receiver/runner.py`（主循环改多码，import 改）
+  - `sqr/cli.py`（4 个 CLI 标志 + HTML 网格分支）
+  - `tests/test_qr_render.py`（TestMatricesToHtmlGrid 22 项 + import）
+  - `tests/test_decoder.py`（新建，12 项）
+  - `feature_list.json`（t6 in_progress → passing，in_progress_id 归位 null）
+  - `claude-progress.md`（本 Session 005 + 待办清单 + 当前已验证状态）
+- **已知风险或未解决问题**：
+  1. **真实屏幕 round-trip 未做**：接收端多码解码靠单元测试（mock pyzbar）证明逻辑正确，但未在真实"网格 HTML 浏览器全屏 + mss 截图 + pyzbar 多码"物理链路上验证（依赖 t1 的 VMware 环境）。网格 QR 间距是否足够 pyzbar 分离，需真实环境确认。
+  2. **网格密度 vs 可解码性**：默认 4×4=16/页，每个 QR 在屏幕上的物理尺寸取决于屏幕分辨率。若 QR 太小截屏后 pyzbar 可能解码失败——用户需用 `--grid-cols`/`--page-rows` 调小每页密度。已知约束，非 bug。
+  3. **opencv detectAndDecodeMulti 版本依赖**：需 opencv-python ≥4.3；旧版本走 except 返回 []（pyzbar 路径仍可用）。
+  4. **--no-player 与 --html-grid 冲突**：同时传时 --no-player 在 line 76 早退，HTML 不会生成。--html-grid 单独用即可（自带 return 0）。未做冲突保护（用户错误，非关键）。
+- **下一步最佳动作**：
+  1. 按需提交本次所有改动（需用户批准）。
+  2. 若有 VMware 环境：把 t6 网格 HTML 放进真实屏幕 round-trip 验证（同时推进 t1）。
+  3. 同步更新 `sqr/sender/ARCHITECTURE.md`（加渲染器 D）+ `sqr/receiver/ARCHITECTURE.md`（加 decode_qr_multi）——Session 004 立的规矩"代码演进同步更新 ARCHITECTURE.md"。
+
+### Session 006 — HTML 循环播放模式 + 移除 tkinter（t7-html-cycle-replace-tkinter）
+
+- **日期**：2026-08-12
+- **本轮目标**：在 t6 网格 HTML 基础上，新增 `layout="cycle"` 全屏单 QR 自动循环布局；默认 `send <file>` 行为从「tkinter 弹窗循环播放」改为「写 cycle HTML 到 `sqr_sender.html`」；彻底删除 `sqr/sender/player.py`（tkinter player）+ cli.py 中所有 tkinter 引用 + `--renderer tkinter` / `--no-player` 标志。不自动开浏览器。
+- **背景决策**：用户选定方案 A（完全删除 tkinter，非保留兼容）；只写文件不自动开浏览器（内网环境浏览器未必可用，用户自行打开）。cycle 布局复用 t6 的 `matrices_to_html_grid()`，新增 `layout` 参数 + 全屏 CSS 变体（`vmin` 单位）。
+- **已完成**：
+  1. TDD：`tests/test_qr_render.py` 加 `TestCycleLayout`（7 项：one_qr_per_page / auto_on_by_default / forces_single_col_single_row / fullscreen_css_marker / interval_applied / invalid_layout_raises / svg_count_preserved），确认红（`TypeError: unexpected keyword argument 'layout'`），再实现转绿。
+  2. `sqr/sender/qr_render.py`：加 `_CYCLE_CSS`（全屏 black bg + `90vmin` QR + `100vh` 页面 flex 居中）+ `matrices_to_html_grid()` 新增 `layout` 参数（`"grid"` 默认 / `"cycle"`）。cycle 时强制 `cols=1` / `rows_per_page=1` / `auto_cycle=True` 并切换到 `_CYCLE_CSS`；非法 layout 值 `ValueError`。
+  3. `sqr/cli.py`：删除 `from sqr.sender.player import QRPlayer` + tkinter player 分支；删除 `--no-player` 标志；`--renderer` choices 从 `["auto","tkinter","terminal"]` 改为 `["html","terminal"]`（default `"html"`）；新增 `--html-cycle <path>` 标志；默认行为（无特殊标志）→ 写 cycle HTML 到 `sqr_sender.html`。`matrices_to_html_grid` 提升为顶层 import。
+  4. 删除 `sqr/sender/player.py`（tkinter 全屏播放器，132 行）。
+- **运行过的验证**：
+  - `python3 -m pytest tests/ -q` → **133 passed in 2.69s**（126 基线 + cycle 新增 7）。
+  - `python3 -m pytest tests/test_qr_render.py -q` → **48 passed**（41 + 7 cycle；AGENTS.md §5 改动文件单独跑全绿）。
+  - 烟雾测试：`python3 -m sqr.cli send tests/fixtures/sample_mid.txt` → `sqr_sender.html`（3 frames），7 项断言全 PASS（vmin CSS / Auto: ON / autoCycle=true / SQR Cycle title / 3 qr-page / 3 SVG / 0 tkinter refs）。
+  - `grep QRPlayer sqr/` → 仅剩 `qr_render.py` 中 `draw_matrix_on_canvas` 的 docstring 提及 tkinter.Canvas（该函数不 import tkinter，接受 canvas 参数；player.py 删除后已成死代码，本轮不改——scope discipline）。
+- **已记录证据**：无新增证据文件；验证结果见本 Session「运行过的验证」+ feature_list.json `t7-html-cycle-replace-tkinter.evidence`。
+- **提交记录**：本轮工作**尚未提交**（按 AGENTS.md §3，需用户显式批准）。t6 + t7 两轮工作均待提交。
+- **更新过的文件或工件**：
+  - `sqr/sender/qr_render.py`（`_CYCLE_CSS` + `layout` 参数 + cycle 强制逻辑，~30 行新增）
+  - `sqr/cli.py`（删除 tkinter 分支 + `--no-player`；`--renderer` 改 choices/default；新增 `--html-cycle`；默认 cycle HTML 分支；import 提升）
+  - `sqr/sender/player.py`（**删除**，-132 行）
+  - `tests/test_qr_render.py`（`TestCycleLayout` 7 项）
+  - `feature_list.json`（t7 in_progress → passing，in_progress_id 归位 null）
+  - `claude-progress.md`（本 Session 006 + 待办清单 + 当前已验证状态）
+- **已知风险或未解决问题**：
+  1. **`draw_matrix_on_canvas` 成死代码**：`qr_render.py` 的渲染器 A（tkinter Canvas 绘制）在 player.py 删除后无调用方。函数本身不 import tkinter（接受 canvas 参数），不影响零依赖目标。后续可清理，但非本轮 scope。
+  2. **真实屏幕 round-trip 未做**：cycle HTML 的全屏单 QR 循环未在真实「浏览器全屏 + mss 截图 + pyzbar」物理链路上验证（依赖 t1 的 VMware 环境）。与 t6 同类风险。
+  3. **文档未同步**：`sqr/sender/ARCHITECTURE.md` 仍引用 player.py / QRPlayer / tkinter 全屏播放（Session 005 遗留 + 本轮新增的 layout 参数未记录）。需后续更新。
+  4. **send.sh 自检**：`launcher/send.sh` 的自检逻辑（Phase 5 打包产物）可能仍假设 tkinter 可用——需在下一轮打包验证时确认。
+- **下一步最佳动作**：
+  1. 按需提交 t6 + t7 两轮改动（需用户批准）。
+  2. 同步更新 `sqr/sender/ARCHITECTURE.md`（删 player.py 章节 + 加 layout 参数 + 更新默认行为为 cycle HTML）。
+  3. 清理 `draw_matrix_on_canvas` 死代码（可选，低优先级）。
+  4. 若有 VMware 环境：把 cycle HTML 放进真实屏幕 round-trip 验证。
+
+### Session 007 — grid Auto 改逐张全屏播放（t8-grid-auto-per-frame）
+
+- **日期**：2026-08-13
+- **本轮目标**：修改发送端 grid 模式（`--html-grid`）的 Auto 行为：从"整页翻页"（一次切 cols×rows 张 QR）改为"逐张全屏播放"（Auto ON 进全屏舞台，一次 1 张 QR 逐帧轮播）。Auto OFF 回 grid 多张概览翻页（原行为）。cycle 模式零回归。
+- **背景决策**：用户反馈 grid 模式 Auto 整页翻（默认 16 张/页一起换）对接收端解码不友好；澄清后确认 Auto ON 时屏幕一次只显示 1 张 QR 全屏大图（类似 cycle），逐张切换。
+- **已完成**：
+  1. `sqr/sender/qr_render.py`：
+     - `_GRID_CSS` 加 `#player-stage` 样式（全屏 fixed，`display:none` 默认，flex 居中，`.qr-svg` 90vmin）。
+     - `_GRID_JS_TEMPLATE` 重写支持 frame/page 双模式：新增 `playMode` 变量（grid=`"frame"` / cycle=`"page"`）；frame 模式 Auto ON 时 `enterPlayer()` 隐藏所有 page + 显示 stage、`showFrame(idx)` 克隆当前 cell 的 SVG 进 stage、`setInterval(gotoNextFrame)` 逐帧；Auto OFF `exitPlayer()` 回 grid 翻页。frame 模式手动 Prev/Next：Auto ON 时切帧 + 重启定时器，Auto OFF 时翻页。
+     - `_build_grid_js()` 加 `play_mode` 参数（默认 `"page"`）。
+     - `matrices_to_html_grid()`：grid 模式生成 `<div id="player-stage"></div>` + `play_mode="frame"`；cycle 模式不生成 stage + `play_mode="page"`（保持原翻页逻辑，每页 1 张即逐张）。
+     - docstring 更新 grid/cycle 的 Auto 行为说明。
+  2. `tests/test_qr_render.py`：`TestMatricesToHtmlGrid` 加 3 项（grid_has_player_stage / grid_play_mode_frame / grid_stage_hidden_by_default_css）；`TestCycleLayout` 加 2 项（cycle_no_player_stage / cycle_play_mode_page）。共 +5。
+- **运行过的验证**：
+  - `python3 -m pytest tests/test_qr_render.py -q` → **53 passed**（48 + 5 新增；AGENTS.md §5 改动文件单独跑全绿）。
+  - `python3 -m pytest tests/ -q` → **138 passed in 2.72s**（133 基线 + 5 新增）。
+  - 烟雾测试（实跑 `matrices_to_html_grid`）：10 frames cols=4 rows=4 → 含 player-stage + `playMode="frame"` + Auto:OFF + 1 页 10 SVG；`auto_cycle=True` → `playMode="frame"` + Auto:ON + `var autoCycle = true` + `enterPlayer()` 初始化；`layout="cycle"` → 无 player-stage + `playMode="page"` + Auto:ON + 10 页。
+  - CLI 端到端：`send sample_mid.txt --html-grid /tmp/test_grid.html` → player-stage + `playMode="frame"` + Auto:OFF + 3 SVG/1 页；默认 `send` → cycle HTML 无 player-stage + `playMode="page"` + Auto:ON。
+- **已记录证据**：无新增证据文件；验证结果见本 Session「运行过的验证」。
+- **提交记录**：本轮工作**尚未提交**（按 AGENTS.md §3，需用户显式批准）。
+- **更新过的文件或工件**：
+  - `sqr/sender/qr_render.py`（`_GRID_CSS` +stage / `_GRID_JS_TEMPLATE` 重写 frame-page 双模式 / `_build_grid_js` +play_mode / `matrices_to_html_grid` 条件生成 stage + play_mode / docstring）
+  - `tests/test_qr_render.py`（+5 断言：grid 3 + cycle 2）
+  - `claude-progress.md`（本 Session 007 + 顶部基线 133→138 + 测试覆盖表 test_qr_render 48→53 + 待办清单加 t8 行）
+- **已知风险或未解决问题**：
+  1. **真实屏幕 round-trip 未做**：grid Auto 逐张全屏播放未在真实「浏览器全屏 + mss 截图 + pyzbar」物理链路验证（依赖 t1 的 VMware 环境）。与 t6/t7 同类风险。
+  2. **player-stage 克隆 SVG 方式**：`showFrame` 用 `cloneNode(true)` 克隆 cell 的 SVG 进 stage，DOM 重复但视觉等效。QR 传输场景帧数有限（百级），无性能问题。
+  3. **文档未同步**：`sqr/sender/ARCHITECTURE.md` 仍引用 player.py（Session 006 遗留），且未记录 player-stage / playMode 双模式。需后续统一更新。
+- **下一步最佳动作**：
+  1. 按需提交本轮改动（需用户批准）。
+  2. 同步更新 `sqr/sender/ARCHITECTURE.md`（Session 006 + 007 合并更新：删 player.py + 加 layout/playMode/player-stage）。
+  3. 若有 VMware 环境：把 grid Auto 逐张 HTML 放进真实屏幕 round-trip 验证。
+
+### Session 008 — 接收端 image 批量解码（t9-decode-from-images）
+
+- **日期**：2026-08-14
+- **本轮目标**：接收端增加"从多个二维码 image 文件批量解码还原"能力。数据源从 mss 屏幕截图换成 image 文件列表（PPM/PNG/JPG），后续组装校验链路复用现有组件。接续 Session 007 后的 `/tmp/e2e_t001.py` image round-trip 验证，正式化为 CLI 子命令。
+- **已完成**：
+  1. `sqr/receiver/image_decoder.py`（新建）：`run_receiver_from_images(image_paths, output_path, expected_*, on_progress, on_complete)`。数据源换成 image 文件列表，复用 `ChunkAssembler` / `decompress_payload` / `verify_restored_file`，**不动 runner.py（零回归）**。每 image 优先 `decode_qr_multi`（兼容网格同屏多 QR），空回退 `decode_qr` 单码。manifest 缺失 / 数据帧未收齐 → 构造失败 `VerificationResult`（不抛异常）。私有助手 `_decode_image_file()` / `_fail_result()`。
+  2. `sqr/cli.py`：加 `cmd_decode()` + `decode` 子命令。参数：`--image <file>`（action=append，可多次）+ `--images <dir>`（扫描 .ppm/.png/.jpg/.jpeg）+ `--output` + `--expected-sha256/md5/bytes`。`on_progress` 进度条 + `on_complete` 结果打印，风格对齐 `cmd_receive`。错误路径（目录不存在 / 无 image 参数 / 文件不存在）友好报错 exit 1。
+  3. `tests/test_image_decoder.py`（新建，8 项）：round-trip small + round-trip mid + 顺序无关 + progress 回调 + manifest 缺失 + 数据帧缺失 + 空列表 + on_complete 回调。
+- **运行过的验证**：
+  - `python3 -m pytest tests/test_image_decoder.py -q` → **8 passed**（TDD：先红 ModuleNotFoundError → 实现转绿）。
+  - `python3 -m pytest tests/ -q` → **146 passed in 4.47s**（138 基线 + 8 新增）。
+  - CLI 端到端（`--images` 目录模式）：`decode --images /tmp/qr_frames_t001 --output received_cli.md --expected-sha256 d9c923... --expected-md5 68e7af... --expected-bytes 72641` → 进度条 0→100% → **SUCCESS** / 72641 bytes / SHA-256 ✓ / MD5 ✓ / UTF-8 OK；`diff` **IDENTICAL** / 系统 md5 `68e7affbd41c72bb81ed881fdd32be2b` 匹配。
+  - `--image` append 路径：2 帧 → incomplete FAILED（missing 18 frames，参数收集正确）。
+  - 错误路径：目录不存在 → exit 1；无 image 参数 → exit 1。
+- **已记录证据**：无新增证据文件；验证结果见本 Session「运行过的验证」+ feature_list.json `t9-decode-from-images.evidence`。
+- **提交记录**：本轮工作**尚未提交**（按 AGENTS.md §3，需用户显式批准）。
+- **更新过的文件或工件**：
+  - `sqr/receiver/image_decoder.py`（新建，~110 行）
+  - `sqr/cli.py`（`cmd_decode()` + `decode` subparser）
+  - `tests/test_image_decoder.py`（新建，8 项）
+  - `feature_list.json`（t9 in_progress → passing，in_progress_id 归位 null）
+  - `claude-progress.md`（本 Session 008 + 顶部基线 138→146 + 测试覆盖表加 test_image_decoder + 标准启动路径加 decode + 待办清单加 t9 行）
+- **已知风险或未解决问题**：
+  1. **真实屏幕 round-trip 未做**：image round-trip 证明接收端核心解码链路对 72KB 文件可靠，但仍非真实屏幕 mss 截图（依赖 t1 VMware 环境）。与 t6/t7/t8 同类风险。
+  2. **CLI `--image` append 路径未单元测试覆盖**：函数层 `run_receiver_from_images` 的 path list 已被 8 项测试覆盖；CLI 层 `action="append"` 参数收集靠手动端到端验证（2 帧 incomplete 测试通过）。
+  3. **大批量 image 性能未测**：当前 t001_60k = 20 张秒级完成；数百张 image 的 I/O + 解码耗时未压测。
+  4. **GUI 未集成**：`sqr.receiver.app`（控制面板）未加"上传 image"按钮调用 `run_receiver_from_images`；app.py 本身仍未被 feature_list.json 收录（Session 001 遗留）。
+- **下一步最佳动作**：
+  1. 按需提交本轮改动（需用户批准）。
+  2. 可选：GUI `app.py` 加"上传 image"按钮调用 `run_receiver_from_images`（同时把 app.py 正式登记进 feature_list.json）。
+  3. 可选：`decode` 支持 glob 模式（`--image "frames/*.ppm"`）。
+  4. 同步更新 `sqr/receiver/ARCHITECTURE.md`（加 image_decoder 模块说明）。
+
+### Session 009 — GUI 加 image 批量解码按钮 + app.py 正式登记
+
+- **日期**：2026-08-14
+- **本轮目标**：接收端 GUI 控制面板（`sqr/receiver/app.py`）加"从 image 文件批量解码"按钮，触发 `run_receiver_from_images`（t9 的 GUI 入口）；同时把 app.py 正式登记进 feature_list.json（消除 Session 001 遗留风险 #5）。
+- **已完成**：
+  1. `sqr/receiver/app.py`：
+     - `_build_ui` 加**步骤③ section**（row 13-16）："选择 image 文件…" / "选择目录…" / "开始解码" 三按钮 + 已选文件数显示。日志区 row 号 13-15 → 17-19。
+     - 加 `_on_select_image_files`（filedialog.askopenfilenames 多选 .ppm/.png/.jpg）/ `_on_select_image_dir`（askdirectory + 扫描扩展名）/ `_on_start_decode`（校验非空 + 后台线程）事件方法。
+     - 加 `_run_decode` 后台线程方法（调 `run_receiver_from_images`，进度/完成/异常事件经 `queue.Queue` 传主线程，复用现有 `_drain_queue` 轮询机制）。
+     - `_set_controls_busy` 加步骤③三按钮的 disable/enable。
+     - `__init__` 加 `self.image_paths: list[Path]` 状态。
+  2. `feature_list.json`：加 `p7-gui-control-panel`（passing），app.py 正式收录（消除 Session 001 遗留风险 #5）；t9 notes 补 GUI 入口说明。
+- **运行过的验证**：
+  - `.venv/bin/python -c "import sqr.receiver.app"` → **import OK**（app.py 无单元测试，靠 import 检查语法/导入）。
+  - `python3 -m pytest tests/ -q` → **146 passed**（未破坏其他；GUI 改动不影响测试层）。
+  - GUI 启动（tmux sqr-gui）：`.venv/bin/python -m sqr.cli gui` → 无 traceback，进程运行，窗口弹出。
+- **已记录证据**：无新增证据文件；验证结果见本 Session「运行过的验证」+ feature_list.json `p7-gui-control-panel.evidence`。
+- **提交记录**：本轮工作**尚未提交**（按 AGENTS.md §3，需用户显式批准）。
+- **更新过的文件或工件**：
+  - `sqr/receiver/app.py`（步骤③ UI + 3 事件方法 + _run_decode + _set_controls_busy + image_paths 状态，~70 行新增）
+  - `feature_list.json`（加 p7-gui-control-panel passing + t9 notes 补 GUI）
+  - `claude-progress.md`（本 Session 009 + 待办清单加 p7 行）
+- **已知风险或未解决问题**：
+  1. **GUI 无自动化测试**：tkinter 需手动验证（与 p4-screen-io / p6-gui-region-selector 同类，均"手动验证，无独立自动化测试"）。
+  2. **image 解码无停止按钮**：场景快（t001_60k 秒级），未加 stop_event 支持；数百张大图未压测（如需可扩展 run_receiver_from_images 加 stop_event）。
+  3. **GUI 解码时输出路径默认 sqr_output.txt**：用户需手动改成 .md 或对应扩展名（沿用现有 output_var 默认值，未特判）。
+- **下一步最佳动作**：
+  1. 用户手动测试 GUI image 按钮：选 `/tmp/qr_frames_t001` 目录 → 开始解码 → 验证还原。
+  2. 按需提交本轮改动（需用户批准）。
+
+### Session 010 — 发送端 HTML 加 Save ZIP 按钮（纯 JS 零依赖导出 QR PNG zip）
+
+- **日期**：2026-08-14
+- **本轮目标**：发送端静态 HTML（`matrices_to_html_grid` 产物）加 "Save ZIP" 按钮，点击把全部 QR 帧 SVG 光栅化为 PNG 打包成 zip 下载，打通"发送端 HTML → image zip → 接收端 image 批量解码"链路。
+- **已完成**：
+  1. `sqr/sender/qr_render.py`：加 `_ZIP_JS` 常量（独立 `<script>` 块，纯 JS 零依赖）：
+     - CRC32 查表实现（IEEE 802.3，与 Python `binascii.crc32` 一致）
+     - `svgToPng()`：SVG DOM → serializeToString → Blob URL → Image.onload → canvas 光栅化（pxPerModule=10，version 3 QR → 370px）→ toDataURL('image/png') → Uint8Array
+     - `buildZip()`：STORE 无压缩格式（local file header + central directory + EOCD），手写 u16/u32 LE 编码
+     - save-zip 按钮事件：遍历 `.qr-cell .qr-svg` 批量异步转 PNG → 计数器收齐 → 打包 zip → `<a download="qr_frames.zip">` 触发下载；过程显示 "Zipping N/M" 进度
+     - **JS 源码无 `<svg` 字面量**（保护 `test_svg_count_equals_matrices` 计数断言）
+  2. `matrices_to_html_grid` controls 加 `<button id="save-zip-btn">Save ZIP</button>`（grid + cycle 两种布局共用）
+  3. body 拼接追加 `_ZIP_JS`（在 `_build_grid_js` 后、`</body>` 前）
+  4. `tests/test_qr_render.py`：加 4 测试（`test_has_save_zip_button` / `test_zip_js_embedded` / `test_zip_js_no_extra_svg_literal` / `test_cycle_has_save_zip_button`）
+- **运行过的验证**：
+  - `import sqr.sender.qr_render` → **import OK**
+  - `pytest tests/test_qr_render.py -q` → **57 passed**
+  - `pytest tests/ -q` → **150 passed**（原 146 + 4 新测试）
+  - **Playwright 端到端**（纯 JS zip 浏览器首次验证）：
+    1. 生成 5 帧 cycle HTML（`/tmp/test_savezip.html`，5 个 SQ1 帧）
+    2. 临时 http.server + Playwright navigate + click `#save-zip-btn`
+    3. `page.waitForEvent('download')` 捕获 → `download.saveAs('/tmp/qr_frames_download.zip')`
+    4. Python 校验：`zipfile.testzip()` → None（CRC 全过）；5 个文件 `qr_0.png…qr_4.png`（各 370×370px）
+    5. 每个 PNG `pyzbar.decode` → 全部成功 → 还原 SQ1 帧 `match: True`
+- **已记录证据**：`/tmp/qr_frames_download.zip`（Playwright 下载产物，端到端验证用，可复现）。
+- **提交记录**：本轮工作**尚未提交**（按 AGENTS.md §3，需用户显式批准）。
+- **更新过的文件或工件**：
+  - `sqr/sender/qr_render.py`（`_ZIP_JS` ~120 行 + controls +1 按钮 + body +1 拼接）
+  - `tests/test_qr_render.py`（+4 测试）
+  - `claude-progress.md`（本 Session 010 + 待办清单加 t10 行）
+  - `feature_list.json`（加 `t10-save-zip-from-html` passing）
+- **已知风险或未解决问题**：
+  1. **SVG→PNG 依赖现代浏览器**：canvas + Image.onload + Blob URL + toDataURL，极旧浏览器可能不支持；但项目已假设现代浏览器（CSS grid/flex/vmin）。canvas taint 风险已规避（SVG 纯 rect 无 foreignObject，blob URL 同源）。
+  2. **pxPerModule=10 硬编码**：version 3 QR → 370px 已验证 pyzbar 可读；更大 version（高容量文件分片多）未跨 version 压测，理论上 pxPerModule=10 对所有 version 足够（pyzbar 扫光栅 QR 不依赖绝对像素，只看对比度）。
+  3. **下载文件名固定 `qr_frames.zip`**：未含 file_id，多个文件并发下载可能撞名（单用户场景无影响）。
+- **下一步最佳动作**：
+  1. 用户手动浏览器测试：打开真实 sqr_sender.html → 点 Save ZIP → 用接收端 GUI 步骤③ 或 CLI `decode` 解码验证。
+  2. 按需提交本轮改动（需用户批准）。

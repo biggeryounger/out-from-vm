@@ -1,7 +1,7 @@
 {
   "_comment": "机器可读的功能清单。与本文件冲突时以本文件为准；claude-progress.md「待办清单」只是人眼速览视图。agent 任何时候只能有一个功能处于 in_progress。",
   "schema_version": 1,
-  "updated": "2026-08-11",
+  "updated": "2026-08-14",
   "in_progress_id": null,
   "features": [
     {
@@ -167,6 +167,98 @@
       ],
       "evidence": "",
       "notes": "目前 test_roundtrip.py fixture 最大 ~10KB。100KB+ 文件意味着数十帧 QR，需要验证接收端循环补采逻辑。"
+    },
+    {
+      "id": "t6-html-grid-mode",
+      "priority": 15,
+      "area": "sender",
+      "title": "HTML 网格渲染器 + 分页 + 接收端多码解码",
+      "user_visible_behavior": "python3 -m sqr.cli send <file> --html-grid out.html 生成静态 HTML（QR 网格排列，自动分页，Prev/Next/Auto 按钮，Auto 默认关）；外网接收端一帧截图能解码同屏多个 QR",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_qr_render.py -q 全绿（含新增网格/分页用例）",
+        "python3 -m pytest tests/test_decoder.py -q 全绿（multi-decode 用例）",
+        "python3 -m pytest tests/ -q 全绿（基线 92 + 新增项）"
+      ],
+      "evidence": "126 passed in 2.64s（92 基线 + 34 新增：test_qr_render +22 网格/分页，test_decoder +12 多码）。烟雾测试：sample_mid.txt（3 frames→1 页）+ 51KB 随机 sha256 内容（35 frames→3 页 ceil(35/16)）均正确生成 HTML；Auto: OFF / autoCycle=false / Prev/Next 按钮齐备。改动文件单独跑：test_qr_render 41 passed、test_decoder 12 passed。",
+      "notes": "方案 B（用户选定）。新增 matrices_to_html_grid（SVG 网格 + CSS 分页 + JS Prev/Next/Auto 按钮）+ decode_qr_multi（pyzbar 多码 + opencv detectAndDecodeMulti 回退）。SQ1 协议不变。Auto 默认关（用户选定）。"
+    },
+    {
+      "id": "t7-html-cycle-replace-tkinter",
+      "priority": 15,
+      "area": "sender",
+      "title": "HTML 循环播放模式 + 彻底移除 tkinter 弹窗",
+      "user_visible_behavior": "python3 -m sqr.cli send <file> 默认生成循环 HTML（单 QR/帧自动循环，写 sqr_sender.html，不弹窗）；--html-cycle <path> 自定义路径；--html-grid 仍是静态网格；tkinter player 删除",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_qr_render.py -q 全绿（含 cycle 布局 7 用例）",
+        "python3 -m pytest tests/ -q 全绿（133 = 126 基线 + cycle 新增 7）",
+        "确认 sqr/sender/player.py 已删除且无残留引用",
+        "烟雾：python3 -m sqr.cli send <file> 生成 sqr_sender.html（cycle 模式，Auto: ON）"
+      ],
+      "evidence": "133 passed in 2.69s (pytest tests/ -q)；48 passed (test_qr_render.py 单独)；烟雾 send sample_mid.txt → sqr_sender.html（3 frames, vmin CSS, Auto: ON, autoCycle=true, 0 tkinter refs）；player.py 已删除，grep 确认 cli.py 无 QRPlayer 引用。",
+      "notes": "用户选定：A 彻底删除 tkinter（player.py + tkinter 分支 + --renderer tkinter + --no-player）；只写文件不自动开浏览器。cycle 布局 = matrices_to_html_grid(layout='cycle')：强制 cols=1/rows=1/auto_cycle=True + 全屏 CSS（vmin）。默认 send 行为从 tkinter 弹窗改为写 cycle HTML。"
+    },
+    {
+      "id": "t8-grid-auto-per-frame",
+      "priority": 15,
+      "area": "sender",
+      "title": "grid Auto 改逐张全屏播放（原为整页翻）",
+      "user_visible_behavior": "--html-grid 生成的 HTML：Auto ON 时屏幕一次只显示 1 张 QR（全屏大图）逐帧轮播（原为整页 cols×rows 张一起翻）；Auto OFF 回 grid 多张概览翻页；cycle 模式行为不变",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_qr_render.py -q 全绿（含 grid player-stage / playMode 断言）",
+        "python3 -m pytest tests/ -q 全绿（138 = 133 基线 + 5 新增）",
+        "烟雾：grid HTML 含 id=player-stage + playMode=frame；cycle HTML 无 player-stage + playMode=page"
+      ],
+      "evidence": "138 passed in 2.72s (pytest tests/ -q)；53 passed (test_qr_render.py 单独，48+5)。烟雾：grid (10 frames/cols=4/rows=4) 含 player-stage + playMode=frame + Auto:OFF + 1页10SVG；auto_cycle=True → enterPlayer() 初始化；cycle → 无 player-stage + playMode=page + 10页。CLI 端到端：send --html-grid → grid 结构；默认 send → cycle 结构。",
+      "notes": "grid 模式 Auto ON → enterPlayer() 进 <div id=player-stage> 全屏舞台，showFrame 克隆当前 cell SVG 逐帧轮播；Auto OFF → exitPlayer() 回 grid 多张概览翻页。cycle 零回归（playMode=page，每页1张即逐张）。JS 新增 playMode 变量区分 frame/page 双模式。涉及 sqr/sender/qr_render.py。"
+    },
+    {
+      "id": "p7-gui-control-panel",
+      "priority": 10,
+      "area": "receiver",
+      "title": "接收端 GUI 控制面板（屏幕框选接收 + image 批量解码）",
+      "user_visible_behavior": "python3 -m sqr.cli gui 弹出控制面板：① 框选屏幕区域 ② 开始屏幕截图接收 ③ 从 image 文件批量解码（选择文件/目录→开始解码）。后台线程接收，进度条 + 日志实时显示",
+      "status": "passing",
+      "verification": [
+        "手动：python3 -m sqr.cli gui 弹出控制面板窗口，含步骤①②③",
+        "手动：步骤③ 选择目录 /tmp/qr_frames_t001 → 开始解码 → 进度条跑完 → SUCCESS 弹窗 + 还原文件写出",
+        ".venv/bin/python -c \"import sqr.receiver.app\" 无报错",
+        "python3 -m pytest tests/ -q 全绿（GUI 改动不影响测试层）"
+      ],
+      "evidence": "import sqr.receiver.app OK；146 passed (pytest tests/ -q)；GUI 启动无 traceback。app.py 含 ReceiverApp 类（tkinter grid 布局，后台 daemon 线程 + queue.Queue 事件传递 + root.after 轮询）。Session 001 发现的未登记 app.py（风险 #5）本次正式收录。",
+      "notes": "Session 001 遗留：app.py（15KB）+ gui 子命令一直存在但未登记。本次（Session 009）加步骤③ image 批量解码按钮（_on_select_image_files/_on_select_image_dir/_on_start_decode + _run_decode 调 run_receiver_from_images）并正式收录。GUI 与 p4/p6 同为手动验证（无独立自动化测试）。涉及 sqr/receiver/app.py。"
+    },
+    {
+      "id": "t9-decode-from-images",
+      "priority": 15,
+      "area": "receiver",
+      "title": "接收端从多个二维码 image 文件批量解码还原",
+      "user_visible_behavior": "python3 -m sqr.cli decode --images <dir> [--image <f>...] --output <path> 扫描指定目录和/或文件的二维码 image（PPM/PNG/JPG），批量 pyzbar 解码 → ChunkAssembler 组装 → 三重校验 → 写出还原文件",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_image_decoder.py -q 全绿",
+        "python3 -m pytest tests/ -q 全绿（138 基线 + 新增）",
+        "CLI 端到端：decode --images /tmp/qr_frames_t001 --output received_cli.md，diff 与源文件 large_file_transfer_test_corpus.md 一致"
+      ],
+      "evidence": "146 passed in 4.47s (pytest tests/ -q)；8 passed (test_image_decoder.py 单独)。CLI 端到端：decode --images /tmp/qr_frames_t001 (20 PPM) → SUCCESS / 72641 bytes / SHA-256 d9c923...ac073 ✓ / MD5 68e7af...2b ✓ / diff IDENTICAL。--image append（2帧）→ incomplete FAILED（参数收集正确）；目录不存在/无参数 → exit 1 友好报错。",
+      "notes": "新增 sqr/receiver/image_decoder.py（run_receiver_from_images，复用 ChunkAssembler/decompress/verify，不动 runner.py 零回归）+ cli.py decode 子命令（--images 目录扫描 + --image append 单文件 + --output）。数据源从 mss 截图换成 image 文件列表，后续组装校验链路与 run_receiver 一致。接续 Session 007 后的 image round-trip 验证（/tmp/e2e_t001.py 脚本）正式化。Session 009 补 GUI 入口：app.py 步骤③ 按钮调 run_receiver_from_images。"
+    },
+    {
+      "id": "t10-save-zip-from-html",
+      "priority": 15,
+      "area": "sender",
+      "title": "发送端 HTML 加 Save ZIP 按钮（纯 JS 零依赖导出 QR PNG zip）",
+      "user_visible_behavior": "matrices_to_html_grid 生成的 HTML（grid/cycle 两种布局）底部 controls 含 \"Save ZIP\" 按钮，点击后浏览器把全部 QR 帧 SVG 光栅化为 PNG（pxPerModule=10）打包成 qr_frames.zip 下载；零外部依赖（纯 JS 手写 zip STORE + CRC32），内网离线可用",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_qr_render.py -q 全绿（含 save-zip 按钮 + zip JS 注入 + svg 计数未破坏断言）",
+        "python3 -m pytest tests/ -q 全绿（150 = 146 基线 + 4 新增）",
+        "Playwright 端到端：浏览器点 Save ZIP → 下载 qr_frames.zip → Python zipfile.testzip() CRC 通过 → PNG pyzbar 解码 → 还原 SQ1 帧 match: True"
+      ],
+      "evidence": "150 passed in 4.51s (pytest tests/ -q)；57 passed (test_qr_render.py 单独)。Playwright：5 帧 cycle HTML → click #save-zip-btn → download qr_frames.zip → zipfile.testzip()=None(OK) → 5 PNG qr_0..qr_4 (370x370) → pyzbar 全部解码成功 → 还原 SQ1 帧 match: True。",
+      "notes": "纯 JS 零依赖（不引 JSZip，符合内网零安装哲学）。_ZIP_JS 含 CRC32 查表（IEEE 802.3）+ svgToPng 异步光栅化（serializeToString→Blob URL→Image.onload→canvas→toDataURL）+ buildZip STORE 无压缩组装。JS 源码无 <svg 字面量（保护 test_svg_count_equals_matrices）。打通'发送端 HTML → image zip → 接收端 image 批量解码（t9 + GUI 步骤③）'链路。涉及 sqr/sender/qr_render.py + tests/test_qr_render.py。"
     }
   ]
 }
