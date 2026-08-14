@@ -10,7 +10,7 @@ from typing import Callable, Optional, Any
 from sqr.protocol import FileManifest
 from sqr.receiver.assembler import AssemblyProgress, ChunkAssembler
 from sqr.receiver.capturer import CaptureRegion, ScreenCapturer
-from sqr.receiver.decoder import decode_qr
+from sqr.receiver.decoder import decode_qr_multi
 from sqr.receiver.verifier import VerificationResult, verify_restored_file
 from sqr.sender.compressor import decompress_payload
 
@@ -60,16 +60,19 @@ def run_receiver(
             time.sleep(interval_ms / 1000)
             continue
 
-        decoded = decode_qr(img)
-        if decoded is not None:
+        decoded_list = decode_qr_multi(img)
+        completed = False
+        for decoded in decoded_list:
             added = assembler.add_raw(decoded)
             if added:
                 progress = assembler.get_progress()
                 if on_progress:
                     on_progress(progress)
-
                 if progress.is_complete:
+                    completed = True
                     break
+        if completed:
+            break
 
         time.sleep(interval_ms / 1000)
 
