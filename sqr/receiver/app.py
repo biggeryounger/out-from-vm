@@ -51,6 +51,7 @@ class ReceiverApp:
         self._stop_event: Optional[threading.Event] = None
         self._event_q: "queue.Queue[tuple]" = queue.Queue()
         self._capturing = False
+        self.image_paths: list[Path] = []
 
         self._build_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -177,13 +178,56 @@ class ReceiverApp:
             fg="#444444",
         ).grid(row=12, column=0, columnspan=3, sticky="w", padx=12, pady=(2, 0))
 
-        # ---- 日志 ----
+        # ---- 步骤 3：从 image 文件批量解码 ----
         ttk.Separator(self.root, orient="horizontal").grid(
             row=13, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 0)
         )
+        step3 = tk.Label(
+            self.root,
+            text="③ 从 image 文件批量解码（无需屏幕截图）",
+            font=("Helvetica", 12, "bold"),
+            bg="#f5f5f5",
+            fg="#222222",
+        )
+        step3.grid(row=14, column=0, columnspan=3, sticky="w", padx=12, pady=(6, 0))
+
+        img_btn_frame = tk.Frame(self.root, bg="#f5f5f5")
+        img_btn_frame.grid(row=15, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
+
+        self.img_files_btn = ttk.Button(
+            img_btn_frame, text="选择 image 文件…",
+            command=self._on_select_image_files,
+        )
+        self.img_files_btn.pack(side="left", padx=(0, 8))
+
+        self.img_dir_btn = ttk.Button(
+            img_btn_frame, text="选择目录…",
+            command=self._on_select_image_dir,
+        )
+        self.img_dir_btn.pack(side="left", padx=(0, 8))
+
+        self.decode_btn = ttk.Button(
+            img_btn_frame, text="开始解码", width=12,
+            command=self._on_start_decode,
+        )
+        self.decode_btn.pack(side="left")
+
+        self.images_var = tk.StringVar(value="未选择 image 文件")
+        tk.Label(
+            self.root,
+            textvariable=self.images_var,
+            font=("Courier", 10),
+            bg="#f5f5f5",
+            fg="#888888",
+        ).grid(row=16, column=0, columnspan=3, sticky="w", padx=12)
+
+        # ---- 日志 ----
+        ttk.Separator(self.root, orient="horizontal").grid(
+            row=17, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 0)
+        )
         tk.Label(
             self.root, text="日志", font=("Helvetica", 10, "bold"), bg="#f5f5f5"
-        ).grid(row=14, column=0, columnspan=3, sticky="w", padx=12, pady=(6, 0))
+        ).grid(row=18, column=0, columnspan=3, sticky="w", padx=12, pady=(6, 0))
 
         self.log_text = tk.Text(
             self.root,
@@ -195,7 +239,7 @@ class ReceiverApp:
             state="disabled",
             wrap="word",
         )
-        self.log_text.grid(row=15, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
+        self.log_text.grid(row=19, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
 
         self.root.grid_columnconfigure(1, weight=1)
 
@@ -289,6 +333,65 @@ class ReceiverApp:
         self._log("用户请求停止")
 
     # ------------------------------------------------------------
+    # 事件：image 批量解码
+    # ------------------------------------------------------------
+    def _on_select_image_files(self) -> None:
+        if self._capturing:
+            self._messagebox.showwarning("提示", "接收进行中，请先停止。")
+            return
+        paths = self._filedialog.askopenfilenames(
+            title="选择 QR image 文件",
+            filetypes=[
+                ("QR 图片", "*.ppm *.png *.jpg *.jpeg"),
+                ("所有文件", "*.*"),
+            ],
+        )
+        if not paths:
+            return
+        self.image_paths = [Path(p) for p in paths]
+        self.images_var.set(f"已选 {len(self.image_paths)} 个文件")
+        self._log(f"已选 image 文件: {len(self.image_paths)} 个")
+
+    def _on_select_image_dir(self) -> None:
+        if self._capturing:
+            self._messagebox.showwarning("提示", "接收进行中，请先停止。")
+            return
+        d = self._filedialog.askdirectory(title="选择含 QR image 的目录")
+        if not d:
+            return
+        exts = {".ppm", ".png", ".jpg", ".jpeg"}
+        self.image_paths = sorted(
+            p for p in Path(d).iterdir() if p.suffix.lower() in exts
+        )
+        self.images_var.set(f"已选 {len(self.image_paths)} 个文件（来自目录）")
+        self._log(f"目录扫描: {len(self.image_paths)} 个 image 文件")
+
+    def _on_start_decode(self) -> None:
+        if self._capturing:
+            return
+        if not self.image_paths:
+            self._messagebox.showwarning("提示", "请先选择 image 文件或目录。")
+            return
+        output_str = self.output_var.get().strip()
+        if not output_str:
+            self._messagebox.showerror("参数错误", "请填写输出文件路径。")
+            return
+        output_path = Path(output_str).expanduser()
+
+        self._capturing = True
+        self._set_controls_busy(True)
+        self.progress["value"] = 0
+        self.progress_var.set("状态: 解码中…")
+
+        self._worker = threading.Thread(
+            target=self._run_decode,
+            args=(list(self.image_paths), output_path),
+            daemon=True,
+        )
+        self._worker.start()
+        self._log(f"开始解码 {len(self.image_paths)} 个 image → {output_path}")
+
+    # ------------------------------------------------------------
     # 后台线程：截图主循环
     # ------------------------------------------------------------
     def _run_capture(
@@ -314,6 +417,25 @@ class ReceiverApp:
                 on_progress=on_progress,
                 on_complete=on_complete,
                 stop_event=stop_event,
+            )
+        except Exception as exc:
+            self._event_q.put((_EV_ERROR, str(exc)))
+
+    def _run_decode(self, image_paths: list, output_path: Path) -> None:
+        from sqr.receiver.image_decoder import run_receiver_from_images
+
+        def on_progress(progress):
+            self._event_q.put((_EV_PROGRESS, progress))
+
+        def on_complete(result, path):
+            self._event_q.put((_EV_COMPLETE, result, path))
+
+        try:
+            run_receiver_from_images(
+                image_paths,
+                output_path,
+                on_progress=on_progress,
+                on_complete=on_complete,
             )
         except Exception as exc:
             self._event_q.put((_EV_ERROR, str(exc)))
@@ -384,6 +506,9 @@ class ReceiverApp:
         self.select_btn.config(state=state_main)
         self.start_btn.config(state=state_main)
         self.stop_btn.config(state="normal" if busy else "disabled")
+        self.img_files_btn.config(state=state_main)
+        self.img_dir_btn.config(state=state_main)
+        self.decode_btn.config(state=state_main)
 
     def _browse_output(self) -> None:
         path = self._filedialog.asksaveasfilename(

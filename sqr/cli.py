@@ -14,7 +14,7 @@ from typing import List
 
 from sqr.protocol import compute_file_id, compute_md5, compute_sha256
 from sqr.sender.chunker import build_all_frames
-from sqr.sender.qr_render import QRMatrix, generate_matrix
+from sqr.sender.qr_render import QRMatrix, generate_matrix, matrices_to_html_grid
 
 
 def _parse_region(s: str):
@@ -73,9 +73,6 @@ def cmd_send(args: argparse.Namespace) -> int:
             ppm_path.write_bytes(ppm_data)
         print(f"PPM frames saved to: {out_dir}")
 
-    if args.no_player:
-        return 0
-
     matrices: List[QRMatrix] = []
     for chunk in chunks:
         qr = generate_matrix(
@@ -83,6 +80,37 @@ def cmd_send(args: argparse.Namespace) -> int:
             error_correction=args.error_correction,
         )
         matrices.append(qr)
+
+    if args.html_grid:
+        html = matrices_to_html_grid(
+            matrices,
+            cols=args.grid_cols,
+            rows_per_page=args.page_rows,
+            page_interval_ms=int(args.page_interval * 1000),
+            file_id=file_id,
+            filename=filename,
+            layout="grid",
+        )
+        html_path = Path(args.html_grid)
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(html, encoding="utf-8")
+        print(f"HTML grid saved to: {html_path} ({len(matrices)} frames)")
+        return 0
+
+    if args.html_cycle:
+        html = matrices_to_html_grid(
+            matrices,
+            page_interval_ms=int(args.interval * 1000),
+            file_id=file_id,
+            filename=filename,
+            layout="cycle",
+        )
+        html_path = Path(args.html_cycle)
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(html, encoding="utf-8")
+        print(f"HTML cycle saved to: {html_path} ({len(matrices)} frames, Auto: ON)")
+        print("Open this file in a browser to start the QR transfer.")
+        return 0
 
     if args.renderer == "terminal":
         from sqr.sender.qr_render import matrix_to_unicode
@@ -98,18 +126,17 @@ def cmd_send(args: argparse.Namespace) -> int:
             pass
         return 0
 
-    from sqr.sender.player import QRPlayer
-
-    player = QRPlayer(
-        matrices=matrices,
+    html = matrices_to_html_grid(
+        matrices,
+        page_interval_ms=int(args.interval * 1000),
         file_id=file_id,
-        total=data_count,
         filename=filename,
-        module_size=args.module_size,
-        interval_ms=int(args.interval * 1000),
+        layout="cycle",
     )
-    print("\nStarting fullscreen QR player... (ESC to quit)\n")
-    player.run()
+    html_path = Path("sqr_sender.html")
+    html_path.write_text(html, encoding="utf-8")
+    print(f"HTML cycle saved to: {html_path} ({len(matrices)} frames, Auto: ON)")
+    print("Open this file in a browser to start the QR transfer.")
     return 0
 
 
@@ -201,6 +228,94 @@ def cmd_gui(args: argparse.Namespace) -> int:
     return launch()
 
 
+def cmd_decode(args: argparse.Namespace) -> int:
+    """接收端（image 批量模式）：从多个二维码 image 文件解码还原内容。"""
+    from sqr.receiver.image_decoder import run_receiver_from_images
+
+    image_paths: list[Path] = []
+
+    if args.image:
+        for f in args.image:
+            p = Path(f)
+            if not p.exists():
+                print(f"错误：image 文件不存在: {f}", file=sys.stderr)
+                return 1
+            image_paths.append(p)
+
+    if args.images:
+        d = Path(args.images)
+        if not d.is_dir():
+            print(f"错误：不是目录: {args.images}", file=sys.stderr)
+            return 1
+        exts = {".ppm", ".png", ".jpg", ".jpeg"}
+        for child in sorted(d.iterdir()):
+            if child.suffix.lower() in exts:
+                image_paths.append(child)
+
+    if not image_paths:
+        print(
+            "错误：未提供任何 image（用 --image <file> 或 --images <dir>）",
+            file=sys.stderr,
+        )
+        return 1
+
+    output_path = Path(args.output)
+
+    print(f"Images:   {len(image_paths)} file(s)")
+    print(f"Output:   {output_path}")
+    if args.expected_sha256:
+        print(f"Expect SHA-256: {args.expected_sha256}")
+    if args.expected_md5:
+        print(f"Expect MD5:     {args.expected_md5}")
+    if args.expected_bytes:
+        print(f"Expect bytes:   {args.expected_bytes}")
+
+    print("\nDecoding... (Ctrl+C to abort)\n")
+
+    def on_progress(progress):
+        total = progress.total if progress.total else 0
+        received = progress.received_count
+        pct = progress.percent
+        bar_len = 30
+        filled = int(bar_len * pct / 100)
+        bar = "█" * filled + "░" * (bar_len - filled)
+        print(
+            f"\r  [{bar}] {received}/{total} ({pct:.0f}%)",
+            end="", flush=True,
+        )
+
+    def on_complete(result, path):
+        print()
+        print(f"\n  Result:    {'SUCCESS' if result.success else 'FAILED'}")
+        if result.actual_bytes:
+            print(f"  Bytes:     {result.actual_bytes}")
+        if result.actual_sha256:
+            print(f"  SHA-256:   {result.actual_sha256}")
+        if result.actual_md5:
+            print(f"  MD5:       {result.actual_md5}")
+        print(f"  UTF-8:     {'OK' if result.utf8_valid else 'FAIL'}")
+        if not result.success:
+            print(f"  Errors:    {result.message}")
+        else:
+            print(f"  Saved to:  {path}")
+
+    try:
+        result = run_receiver_from_images(
+            image_paths,
+            output_path,
+            expected_sha256=args.expected_sha256,
+            expected_md5=args.expected_md5,
+            expected_bytes=args.expected_bytes,
+            on_progress=on_progress,
+            on_complete=on_complete,
+        )
+    except KeyboardInterrupt:
+        print("\n\nAborted by user.")
+        return 1
+
+    return 0 if result.success else 2
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="sqr",
@@ -224,13 +339,22 @@ def main() -> int:
                             help="Save QR PPM frames to this dir (debug)")
     send_parser.add_argument("--no-manifest", action="store_true",
                             help="Do not generate manifest frame")
-    send_parser.add_argument("--renderer", default="auto",
-                            choices=["auto", "tkinter", "terminal"],
-                            help="QR display renderer (default: auto)")
+    send_parser.add_argument("--renderer", default="html",
+                            choices=["html", "terminal"],
+                            help="QR display: html=cycle HTML (default), terminal=unicode print")
     send_parser.add_argument("--module-size", type=int, default=10,
-                            help="Pixels per QR module (default: 10)")
-    send_parser.add_argument("--no-player", action="store_true",
-                            help="Skip player (only generate frames)")
+                            help="Pixels per QR module (default: 10, PPM debug only)")
+    send_parser.add_argument("--html-cycle", default=None,
+                            help="Write fullscreen cycle HTML (1 QR/frame auto-loop) to PATH and exit")
+    send_parser.add_argument("--html-grid", default=None,
+                            help="Write static HTML grid (paginated) to PATH and exit. "
+                                 "Auto-cycle default OFF; use Prev/Next buttons or toggle Auto.")
+    send_parser.add_argument("--grid-cols", type=int, default=4,
+                            help="QR columns per page in HTML grid (default: 4)")
+    send_parser.add_argument("--page-rows", type=int, default=4,
+                            help="QR rows per page in HTML grid (default: 4)")
+    send_parser.add_argument("--page-interval", type=float, default=3.0,
+                            help="Auto-cycle page interval seconds (default: 3.0)")
     send_parser.set_defaults(func=cmd_send)
 
     # receive
@@ -256,6 +380,25 @@ def main() -> int:
         "gui", help="Launch receiver GUI (control panel + region selector)"
     )
     gui_parser.set_defaults(func=cmd_gui)
+
+    # decode
+    decode_parser = subparsers.add_parser(
+        "decode",
+        help="Decode QR images to file (batch mode: from image files, no screen capture)",
+    )
+    decode_parser.add_argument("--image", action="append", default=None,
+                               help="Single image file (PPM/PNG/JPG); repeatable")
+    decode_parser.add_argument("--images", default=None,
+                               help="Directory to scan for QR images (.ppm/.png/.jpg)")
+    decode_parser.add_argument("--output", default="sqr_decoded.txt",
+                               help="Output file path (default: sqr_decoded.txt)")
+    decode_parser.add_argument("--expected-sha256", default=None,
+                               help="Expected SHA-256 (overrides manifest)")
+    decode_parser.add_argument("--expected-md5", default=None,
+                               help="Expected MD5 (overrides manifest)")
+    decode_parser.add_argument("--expected-bytes", type=int, default=None,
+                               help="Expected byte count (overrides manifest)")
+    decode_parser.set_defaults(func=cmd_decode)
 
     args = parser.parse_args()
     return args.func(args)
