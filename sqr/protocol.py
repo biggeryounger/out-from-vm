@@ -2,15 +2,12 @@
 
 纯 stdlib，发送端和接收端共用。
 """
-from __future__ import annotations
-
 import base64
 import binascii
 import hashlib
 import json
-from dataclasses import dataclass
 from enum import IntEnum
-from typing import Any
+from typing import Any, Dict, NamedTuple, Optional, Union
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -66,7 +63,7 @@ def compute_file_id(sha256_hex: str) -> str:
     return sha256_hex[:12]
 
 
-def compute_crc32(data: bytes | str) -> int:
+def compute_crc32(data: Union[bytes, str]) -> int:
     """计算 CRC32，返回 unsigned 32-bit int。
 
     Args:
@@ -92,8 +89,7 @@ def compute_md5(data: bytes) -> str:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class Chunk:
+class Chunk(NamedTuple):
     """单个分片帧（manifest 或 data）。
 
     编码格式: SQ1|<file_id>|<index>|<total>|<crc32:08x>|<payload>
@@ -170,8 +166,7 @@ class Chunk:
         return FrameType.DATA
 
 
-@dataclass(frozen=True)
-class FileManifest:
+class FileManifest(NamedTuple):
     """文件元数据，编码进 manifest 帧的 payload。
 
     JSON 字段使用短键名以减少体积：
@@ -188,13 +183,13 @@ class FileManifest:
     filename: str
     original_bytes: int
     sha256: str             # 64 hex chars
-    md5: str | None         # 32 hex chars，可为 None
+    md5: Optional[str]      # 32 hex chars，可为 None
     compression: str        # "gzip" | "zstd"
     encoding: str           # "base64"
 
     def encode_payload(self) -> str:
         """JSON → Base64（无换行），作为 manifest 帧的 payload。"""
-        data: dict[str, Any] = {
+        data: Dict[str, Any] = {
             "v": self.schema_version,
             "fn": self.filename,
             "n": self.original_bytes,
