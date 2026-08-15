@@ -28,12 +28,13 @@
     │     gzip.decompress 或 zstandard
     ▼  restored bytes
     │
-    ▼  verify_restored_file(restored, manifest, ...)  ← verifier.py
-    │     校验 字节数 / SHA-256 / MD5 / UTF-8（全检查不短路）
+    ▼  restore_verified_payload(restored, manifest, ...)  ← restorer.py
+    │     外层校验 字节数 / SHA-256 / MD5
     │     CLI --expected-* 优先于 manifest
     ▼
     VerificationResult
-    │  success → output_path.write_bytes(restored)
+    │  普通文件 → output_path.write_bytes(restored)
+    │  目录包 → 安全解包、逐文件 SHA-256、原子发布根目录
     ▼
     on_complete 回调（更新进度条/日志/弹窗）
 ```
@@ -122,6 +123,13 @@ on_complete(result, output_path)
 return result
 ```
 
+### `restorer.py` — 文件/目录统一还原边界
+
+`restore_verified_payload` 由屏幕接收和 image 批量解码共同调用。普通文件维持
+原写入行为；manifest 文件名以 `.sqrbundle` 结尾或内容含 bundle index 时，
+把 `--output` 解释为输出父目录，调用 `sqr.bundle.extractor` 安全还原。目标根目录
+已存在时默认失败，不覆盖现有内容；失败的临时目录会清理。
+
 `stop_event`（`threading.Event`）让 GUI 的「停止」按钮能中断主循环。
 
 ### `region_selector.py` — 跨屏拖拽框选（428 行）
@@ -145,11 +153,12 @@ GUI 全屏区域选择器，**支持多显示器/双屏**。
 
 | 符号 | 说明 |
 |---|---|
-| `ReceiverApp` | 主窗口类：输出文件/截图间隔/框选按钮/开始停止/进度条/日志区 |
+| `ReceiverApp` | 主窗口类：输出文件或目录包父目录/截图间隔/框选按钮/开始停止/进度条/日志区 |
 | `ReceiverApp._on_select_region` | 嵌入 `RegionSelector(master=self.root)` 复用 Tk root |
 | `ReceiverApp._on_start` / `_on_stop` | 启停后台 daemon 线程 |
 | `ReceiverApp._run_capture` | 后台线程：调 `run_receiver`，把事件丢进 `queue.Queue` |
 | `ReceiverApp._drain_queue` | 主线程 `root.after(100ms)` 轮询队列更新 UI |
+| `ReceiverApp._browse_output_directory` | 打开目录选择器；目录包将在所选父目录下恢复 manifest 中的根目录名 |
 | `launch()` | `() -> int` 启动 GUI，返回退出码 |
 
 **线程模型（重要）**：tkinter 非线程安全，后台线程**绝不直接触碰 widget**。事件类型 `_EV_PROGRESS` / `_EV_COMPLETE` / `_EV_ERROR` / `_EV_LOG` 通过 `queue.Queue` 传递，主线程轮询消费。

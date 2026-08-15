@@ -28,6 +28,7 @@ def verify_restored_file(
     expected_sha256: Optional[str] = None,
     expected_md5: Optional[str] = None,
     expected_bytes: Optional[int] = None,
+    require_utf8: bool = True,
 ) -> VerificationResult:
     """全量校验恢复后的文件。
 
@@ -63,10 +64,11 @@ def verify_restored_file(
         md5_match = actual_md5 == ref_md5
 
     utf8_valid = True
-    try:
-        data.decode("utf-8")
-    except UnicodeDecodeError:
-        utf8_valid = False
+    if require_utf8:
+        try:
+            data.decode("utf-8")
+        except UnicodeDecodeError:
+            utf8_valid = False
 
     failures: list[str] = []
     if not byte_count_match:
@@ -81,7 +83,7 @@ def verify_restored_file(
         failures.append(
             f"md5: expected {ref_md5}, got {actual_md5}"
         )
-    if not utf8_valid:
+    if require_utf8 and not utf8_valid:
         failures.append("utf-8 decode failed")
 
     success = len(failures) == 0

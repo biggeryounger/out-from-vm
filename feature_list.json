@@ -1,7 +1,7 @@
 {
   "_comment": "机器可读的功能清单。与本文件冲突时以本文件为准；claude-progress.md「待办清单」只是人眼速览视图。agent 任何时候只能有一个功能处于 in_progress。",
   "schema_version": 1,
-  "updated": "2026-08-14",
+  "updated": "2026-08-15",
   "in_progress_id": null,
   "features": [
     {
@@ -259,6 +259,70 @@
       ],
       "evidence": "150 passed in 4.51s (pytest tests/ -q)；57 passed (test_qr_render.py 单独)。Playwright：5 帧 cycle HTML → click #save-zip-btn → download qr_frames.zip → zipfile.testzip()=None(OK) → 5 PNG qr_0..qr_4 (370x370) → pyzbar 全部解码成功 → 还原 SQ1 帧 match: True。",
       "notes": "纯 JS 零依赖（不引 JSZip，符合内网零安装哲学）。_ZIP_JS 含 CRC32 查表（IEEE 802.3）+ svgToPng 异步光栅化（serializeToString→Blob URL→Image.onload→canvas→toDataURL）+ buildZip STORE 无压缩组装。JS 源码无 <svg 字面量（保护 test_svg_count_equals_matrices）。打通'发送端 HTML → image zip → 接收端 image 批量解码（t9 + GUI 步骤③）'链路。涉及 sqr/sender/qr_render.py + tests/test_qr_render.py。"
+    },
+    {
+      "id": "t11-directory-bundle-transfer",
+      "priority": 15,
+      "area": "protocol",
+      "title": "目录信息包传输（保留目录结构与多文件内容）",
+      "user_visible_behavior": "python3 -m sqr.cli send <directory> 将所选目录封装为可校验信息包并复用 SQ1/QR 传输；新版 receive/decode 校验后在 --output 父目录下还原根目录、子目录、普通文件、空文件和空目录",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_bundle.py -q 全绿（确定性打包、安全解包、恶意路径拒绝、逐文件校验）",
+        "python3 -m pytest tests/test_directory_roundtrip.py -q 全绿（目录 → SQ1 QR image → 解码 → 目录逐字节一致）",
+        "python3 -m pytest tests/ -q 全绿，单文件传输零回归",
+        "CLI 烟雾：send <directory> 生成 HTML，decode 后在输出父目录下恢复同名根目录"
+      ],
+      "evidence": "166 passed in 4.95s（原 155 + 新增 11）；test_bundle.py + test_directory_roundtrip.py 合计 11 passed，覆盖确定性打包、Unicode/二进制/空文件/空目录、目标冲突、路径穿越、篡改检测与 QR image 目录 round-trip。CLI 烟雾：source 目录 2 文件/3 目录/53338 文件字节 → 54530B bundle → 3 PPM 帧 → decode SUCCESS → /restored/source，diff -r identical。dist 源码包约 58KB，从 dist/sqr-sender/send.sh 直接发送目录成功。内部软链接策略后由 t14 更新为跳过。",
+      "notes": "M1 使用 stdlib ZIP_STORED 作为内部容器、现有 gzip/zstd 作为外层压缩；信息包内 .sqr-bundle.json 保存规范化目录清单与逐文件 SHA-256。内部软链接由 t14 规定为不跟随并跳过；根目录软链接/其他特殊文件仍拒绝。接收端手工安全解包到临时目录并原子提交；大型目录断点续收/分卷留给 t5/M2。"
+    },
+    {
+      "id": "t12-directory-filename-regex-filter",
+      "priority": 15,
+      "area": "sender",
+      "title": "目录同步文件名正则筛选",
+      "user_visible_behavior": "send <directory> 可重复传入 --include-regex <pattern>，只打包文件名被任一 Python 正则匹配的文件，并保留这些文件所需的目录结构",
+      "status": "passing",
+      "verification": [
+        "test_bundle.py 覆盖单正则、多正则 OR、仅匹配文件的祖先目录、非法正则",
+        "test_directory_roundtrip.py 覆盖筛选后的 QR image 目录 round-trip",
+        "全量 pytest 全绿且无筛选目录/单文件行为零回归",
+        "重建 Tier 1 发送端并实跑 --include-regex"
+      ],
+      "evidence": "171 passed in 5.07s（166 基线 + 5 新增）；test_bundle.py 13 passed、test_directory_roundtrip.py 3 passed。覆盖单正则、多正则 OR、basename re.search、(?i)、非法正则、祖先目录裁剪和筛选后 QR image round-trip。CLI：--include-regex '\\.txt$' → decode SUCCESS，仅恢复 hello.txt + nested/data.txt，未恢复无关 empty 目录；Tier 1 包内 --include-regex '^hello' → 1 文件/1 目录/2 QR 帧成功。",
+      "notes": "匹配目标固定为 basename（文件名本身，不含父目录），使用 re.search；大小写遵循 Python 正则默认规则，用户可用 (?i) 开启忽略大小写；多个参数按 OR。"
+    },
+    {
+      "id": "t13-gui-directory-output-picker",
+      "priority": 10,
+      "area": "receiver",
+      "title": "接收端 GUI 选择目录包保存父目录",
+      "user_visible_behavior": "GUI 输出路径区域同时提供选择文件和选择目录按钮；接收目录二维码时可选择父目录，成功后显示实际还原的根目录路径",
+      "status": "passing",
+      "verification": [
+        "新增 GUI helper 单元测试：选择目录写入 output_var，取消不改值",
+        "import sqr.receiver.app 成功",
+        "全量 pytest 全绿",
+        "手动启动 GUI 确认输出区域同时显示文件/目录按钮"
+      ],
+      "evidence": "173 passed in 5.20s（171 基线 + tests/test_receiver_app.py 2 项）；目录选择 helper 验证选中路径写入 output_var 并记录父目录语义、取消时不改原值；import sqr.receiver.app OK。GUI 代码输出区包含独立“选择文件…”与“选择目录…”按钮，busy 状态同步禁用；完成回调沿用 restorer 返回的实际根目录 path。视觉工具受本机多个同 bundle Python/Tk 旧窗口干扰，只聚焦到旧实例，未把该截图计为新界面证据。",
+      "notes": "不改变后端语义：普通文件时 output 是目标文件；目录包时 output 是父目录，restorer 返回并展示实际 <output>/<root_name>。"
+    },
+    {
+      "id": "t14-skip-internal-symlinks",
+      "priority": 10,
+      "area": "sender",
+      "title": "目录打包时排除内部软链接",
+      "user_visible_behavior": "发送目录包含软链接文件或软链接目录时不再失败；发送端不跟随链接，直接排除并显示跳过数量",
+      "status": "passing",
+      "verification": [
+        "新增独立测试覆盖软链接文件与软链接目录均被跳过且目标内容不泄漏",
+        "根目录本身为软链接仍拒绝",
+        "正则筛选与普通目录打包零回归",
+        "重建 Tier 1 发送包并实跑含软链接目录"
+      ],
+      "evidence": "176 passed in 5.02s（173 基线 + tests/test_bundle_symlinks.py 3 项）；内部软链接文件/目录跳过、链接目标不泄漏、根目录软链接拒绝、正则不会纳入匹配软链接均通过。CLI：含 1 软链接文件 + 1 软链接目录的 source → Files 1 / Folders 2 / Symlinks skipped 2 → 2 PPM → decode SUCCESS，只恢复 real-dir/keep.tcl。重建的 dist/sqr-sender/send.sh 同场景成功。",
+      "notes": "内部软链接无论是否指向目录都只计数并跳过；os.walk 不进入软链接目录。FIFO/socket/device 等非软链接特殊文件仍拒绝。"
     }
   ]
 }

@@ -78,7 +78,7 @@ class ReceiverApp:
 
         subtitle = tk.Label(
             self.root,
-            text="从屏幕上的 QR 码序列还原文件（支持多屏 / 双屏框选）",
+            text="从 QR 码序列还原文件或完整目录结构（支持多屏 / 双屏框选）",
             font=("Helvetica", 11),
             bg="#f5f5f5",
             fg="#666666",
@@ -90,27 +90,44 @@ class ReceiverApp:
         )
 
         # ---- 基本参数 ----
-        tk.Label(self.root, text="输出文件:", bg="#f5f5f5").grid(
+        tk.Label(self.root, text="输出路径:", bg="#f5f5f5").grid(
             row=3, column=0, sticky="w", **pad
         )
         self.output_var = tk.StringVar(value="sqr_output.txt")
         ttk.Entry(self.root, textvariable=self.output_var, width=36).grid(
             row=3, column=1, sticky="ew", padx=(0, 4)
         )
-        ttk.Button(self.root, text="浏览…", width=8, command=self._browse_output).grid(
-            row=3, column=2, sticky="w"
+        output_buttons = ttk.Frame(self.root)
+        output_buttons.grid(row=3, column=2, sticky="w")
+        self.output_file_btn = ttk.Button(
+            output_buttons, text="选择文件…", width=10, command=self._browse_output
         )
+        self.output_file_btn.grid(row=0, column=0, padx=(0, 4))
+        self.output_dir_btn = ttk.Button(
+            output_buttons,
+            text="选择目录…",
+            width=10,
+            command=self._browse_output_directory,
+        )
+        self.output_dir_btn.grid(row=0, column=1)
+        tk.Label(
+            self.root,
+            text="普通文件：填写目标文件；目录包：选择保存父目录",
+            font=("Helvetica", 9),
+            bg="#f5f5f5",
+            fg="#666666",
+        ).grid(row=4, column=1, columnspan=2, sticky="w", padx=(0, 4))
 
         tk.Label(self.root, text="截图间隔(秒):", bg="#f5f5f5").grid(
-            row=4, column=0, sticky="w", **pad
+            row=5, column=0, sticky="w", **pad
         )
         self.interval_var = tk.StringVar(value="0.5")
         ttk.Entry(self.root, textvariable=self.interval_var, width=10).grid(
-            row=4, column=1, sticky="w"
+            row=5, column=1, sticky="w"
         )
 
         ttk.Separator(self.root, orient="horizontal").grid(
-            row=5, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 0)
+            row=6, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 0)
         )
 
         # ---- 步骤 1：框选 ----
@@ -121,14 +138,14 @@ class ReceiverApp:
             bg="#f5f5f5",
             fg="#222222",
         )
-        step1.grid(row=6, column=0, columnspan=3, sticky="w", padx=12, pady=(8, 0))
+        step1.grid(row=7, column=0, columnspan=3, sticky="w", padx=12, pady=(8, 0))
 
         self.select_btn = ttk.Button(
             self.root,
             text="框选截图区域（覆盖所有屏幕）",
             command=self._on_select_region,
         )
-        self.select_btn.grid(row=7, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
+        self.select_btn.grid(row=8, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
 
         self.region_var = tk.StringVar(value="未选择")
         self.region_label = tk.Label(
@@ -138,7 +155,7 @@ class ReceiverApp:
             bg="#f5f5f5",
             fg="#888888",
         )
-        self.region_label.grid(row=8, column=0, columnspan=3, sticky="w", padx=12)
+        self.region_label.grid(row=9, column=0, columnspan=3, sticky="w", padx=12)
 
         # ---- 步骤 2：接收 ----
         step2 = tk.Label(
@@ -148,10 +165,10 @@ class ReceiverApp:
             bg="#f5f5f5",
             fg="#222222",
         )
-        step2.grid(row=9, column=0, columnspan=3, sticky="w", padx=12, pady=(10, 0))
+        step2.grid(row=10, column=0, columnspan=3, sticky="w", padx=12, pady=(10, 0))
 
         btn_frame = tk.Frame(self.root, bg="#f5f5f5")
-        btn_frame.grid(row=10, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
+        btn_frame.grid(row=11, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
 
         self.start_btn = ttk.Button(
             btn_frame, text="开始接收", command=self._on_start, width=14
@@ -167,7 +184,7 @@ class ReceiverApp:
         self.progress = ttk.Progressbar(
             self.root, orient="horizontal", length=440, mode="determinate"
         )
-        self.progress.grid(row=11, column=0, columnspan=3, sticky="ew", padx=12, pady=(6, 0))
+        self.progress.grid(row=12, column=0, columnspan=3, sticky="ew", padx=12, pady=(6, 0))
 
         self.progress_var = tk.StringVar(value="状态: 等待开始")
         tk.Label(
@@ -176,11 +193,11 @@ class ReceiverApp:
             font=("Helvetica", 10),
             bg="#f5f5f5",
             fg="#444444",
-        ).grid(row=12, column=0, columnspan=3, sticky="w", padx=12, pady=(2, 0))
+        ).grid(row=13, column=0, columnspan=3, sticky="w", padx=12, pady=(2, 0))
 
         # ---- 步骤 3：从 image 文件批量解码 ----
         ttk.Separator(self.root, orient="horizontal").grid(
-            row=13, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 0)
+            row=14, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 0)
         )
         step3 = tk.Label(
             self.root,
@@ -189,10 +206,10 @@ class ReceiverApp:
             bg="#f5f5f5",
             fg="#222222",
         )
-        step3.grid(row=14, column=0, columnspan=3, sticky="w", padx=12, pady=(6, 0))
+        step3.grid(row=15, column=0, columnspan=3, sticky="w", padx=12, pady=(6, 0))
 
         img_btn_frame = tk.Frame(self.root, bg="#f5f5f5")
-        img_btn_frame.grid(row=15, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
+        img_btn_frame.grid(row=16, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
 
         self.img_files_btn = ttk.Button(
             img_btn_frame, text="选择 image 文件…",
@@ -219,15 +236,15 @@ class ReceiverApp:
             font=("Courier", 10),
             bg="#f5f5f5",
             fg="#888888",
-        ).grid(row=16, column=0, columnspan=3, sticky="w", padx=12)
+        ).grid(row=17, column=0, columnspan=3, sticky="w", padx=12)
 
         # ---- 日志 ----
         ttk.Separator(self.root, orient="horizontal").grid(
-            row=17, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 0)
+            row=18, column=0, columnspan=3, sticky="ew", padx=8, pady=(8, 0)
         )
         tk.Label(
             self.root, text="日志", font=("Helvetica", 10, "bold"), bg="#f5f5f5"
-        ).grid(row=18, column=0, columnspan=3, sticky="w", padx=12, pady=(6, 0))
+        ).grid(row=19, column=0, columnspan=3, sticky="w", padx=12, pady=(6, 0))
 
         self.log_text = tk.Text(
             self.root,
@@ -239,7 +256,7 @@ class ReceiverApp:
             state="disabled",
             wrap="word",
         )
-        self.log_text.grid(row=19, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
+        self.log_text.grid(row=20, column=0, columnspan=3, sticky="ew", padx=12, pady=4)
 
         self.root.grid_columnconfigure(1, weight=1)
 
@@ -509,6 +526,8 @@ class ReceiverApp:
         self.img_files_btn.config(state=state_main)
         self.img_dir_btn.config(state=state_main)
         self.decode_btn.config(state=state_main)
+        self.output_file_btn.config(state=state_main)
+        self.output_dir_btn.config(state=state_main)
 
     def _browse_output(self) -> None:
         path = self._filedialog.asksaveasfilename(
@@ -521,6 +540,14 @@ class ReceiverApp:
         )
         if path:
             self.output_var.set(path)
+
+    def _browse_output_directory(self) -> None:
+        path = self._filedialog.askdirectory(
+            title="选择目录包的保存父目录"
+        )
+        if path:
+            self.output_var.set(path)
+            self._log(f"目录包将还原到父目录 → {path}")
 
     def _log(self, message: str) -> None:
         import time

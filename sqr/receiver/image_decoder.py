@@ -10,7 +10,8 @@ from typing import Callable, List, Optional
 
 from sqr.receiver.assembler import AssemblyProgress, ChunkAssembler
 from sqr.receiver.decoder import decode_qr, decode_qr_multi
-from sqr.receiver.verifier import VerificationResult, verify_restored_file
+from sqr.receiver.restorer import restore_verified_payload
+from sqr.receiver.verifier import VerificationResult
 from sqr.sender.compressor import decompress_payload
 
 
@@ -101,16 +102,14 @@ def run_receiver_from_images(
     else:
         compressed = assembler.assemble()
         restored = decompress_payload(compressed, manifest.compression)
-        result = verify_restored_file(
+        result, output_path = restore_verified_payload(
             restored,
             manifest,
+            output_path,
             expected_sha256=expected_sha256,
             expected_md5=expected_md5,
             expected_bytes=expected_bytes,
         )
-        if result.success:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_bytes(restored)
 
     if on_complete:
         on_complete(result, output_path)

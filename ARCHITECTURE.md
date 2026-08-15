@@ -9,15 +9,15 @@
 ```
 内网发送端（零安装）                         外网接收端
 ┌────────────────────────────┐            ┌────────────────────────────┐
-│ 文件                       │  屏幕 QR   │ mss 截图 → pyzbar 解码      │
-│  ↓ gzip + base64           │ ◀────────│  ↓                          │
-│  ↓ 分片 + CRC32            │  光学单向 │ SQ1 帧解析 → 去重/校验       │
-│  ↓ manifest 帧(index=0)    │  通道     │  ↓                          │
-│  ↓ QR matrix 渲染          │           │ base64 解码 → gunzip         │
-│  ↓ tkinter Canvas 全屏循环 │           │  ↓                          │
-│ (纯 stdlib + vendor qrcode) │           │ SHA-256/MD5/UTF-8 校验       │
+│ 文件 / 目录                │  屏幕 QR   │ mss 截图 → pyzbar 解码      │
+│  ↓ 目录先封装 sqrbundle    │ ◀────────│  ↓                          │
+│  ↓ gzip + base64           │  光学单向 │ SQ1 帧解析 → 去重/校验       │
+│  ↓ 分片 + CRC32            │  通道     │  ↓                          │
+│  ↓ manifest 帧(index=0)    │           │ base64 解码 → gunzip         │
+│  ↓ QR matrix → HTML        │           │  ↓ 文件写出 / 目录安全还原    │
+│ (纯 stdlib + vendor qrcode) │           │ SHA-256/MD5/逐文件校验       │
 └────────────────────────────┘            └────────────────────────────┘
-   仅需 Python 3.6+ + tkinter               pyzbar + libzbar + mss + Pillow
+   仅需 Python 3.6+ + 浏览器                 pyzbar + libzbar + mss + Pillow
 ```
 
 **单向性**：数据只能从内网流向外网（屏幕被看见），外网无法回传。这是物理隔离决定的，不是软件限制。
@@ -53,6 +53,7 @@
 | 层 | 职责 | 谁依赖它 |
 |---|---|---|
 | `sqr/protocol.py` | SQ1 帧编解码、文件元数据、校验函数。纯 stdlib | sender + receiver 共用 |
+| `sqr/bundle/` | 目录确定性封装、逐文件 SHA-256 清单、安全解包与原子提交 | sender + receiver 共用 |
 | `sqr/sender/` | 文件 → QR 帧序列 → 屏幕播放 | 仅 `cli.cmd_send` 调用 |
 | `sqr/receiver/` | 截图 → 解码 → 组装 → 校验 → 还原 | `cli.cmd_receive` + `cli.cmd_gui` |
 | `sqr/vendor/` | PIL stub + vendored qrcode，让发送端零安装 | 仅 `sender/qr_render.py` 用 |
@@ -104,6 +105,20 @@ SQ1|<file_id>|<index>|<total>|<crc32:08x>|<payload>
 
 ## 关键技术决策
 
+### 0. 目录信息包复用 SQ1
+
+发送目录时，`sqr.bundle.builder` 先生成确定性 ZIP_STORED 信息包。包内
+`.sqr-bundle.json` 记录根目录、全部相对路径、空目录、文件大小与逐文件
+SHA-256；随后仍走原有 gzip/zstd、Base64、SQ1 分片和 QR 渲染。接收端先校验
+整包 SHA-256，再由 `sqr.bundle.extractor` 拒绝绝对路径、`..`、反斜杠、盘符、
+重复路径及清单外成员，解包到 `.sqr-partial-*`，全部逐文件校验通过后原子发布
+根目录。所选根目录本身若为符号链接会拒绝；目录内部的符号链接文件和目录不跟随、
+不打包，并在发送统计中显示跳过数量。FIFO/socket/device 等特殊文件仍拒绝。
+
+可重复的 `send --include-regex <pattern>` 在目录扫描阶段用 Python `re.search`
+匹配文件 basename；多个 pattern 按 OR。启用筛选后，只把匹配文件及其必要祖先
+目录写入 bundle，避免把无关空目录或兄弟目录带到外网。
+
 ### 1. 去 Pillow 化（发送端零安装的关键）
 
 Pillow 有 C 扩展，内网无法 pip install。发送端用两层手段绕过：
@@ -148,6 +163,7 @@ out-from-vm/
 │   ├── __init__.py
 │   ├── cli.py                  # argparse 入口: send / receive / gui
 │   ├── protocol.py             # SQ1 协议（共用层）
+│   ├── bundle/                 # 目录信息包 builder + 安全 extractor
 │   ├── sender/                 # 发送端（详见 sender/ARCHITECTURE.md）
 │   │   ├── ARCHITECTURE.md
 │   │   ├── compressor.py       # 压缩 + base64（含解压，接收端跨层调用）
@@ -191,7 +207,7 @@ out-from-vm/
 | `./init.sh receive` | 安装+验证+启动接收端（默认 GUI 框选）|
 | `./init.sh gui` | 接收端控制面板 |
 | `./init.sh test [args]` | 只跑测试（参数透传给 pytest）|
-| `python3 -m sqr.cli send <file>` | 直接调发送端（跳过 init.sh）|
+| `python3 -m sqr.cli send <file-or-directory>` | 直接调发送端（跳过 init.sh）|
 | `python3 -m sqr.cli receive --output <path>` | 直接调接收端 |
 
 **发送端内网部署**：解压 `dist/sqr-sender-src.zip` → `./send.sh <file>`（send.sh 启动前自检 Python/tkinter/vendor，缺失友好报错）。
