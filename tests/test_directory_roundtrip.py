@@ -89,3 +89,34 @@ def test_corrupt_outer_bundle_is_not_published(tmp_path):
     result = run_receiver_from_images(paths, output_parent)
     assert not result.success
     assert not (output_parent / source.name).exists()
+
+
+def test_filtered_directory_qr_roundtrip(tmp_path):
+    source = tmp_path / "filtered-project"
+    (source / "src").mkdir(parents=True)
+    (source / "src" / "keep.tcl").write_text("puts keep\n")
+    (source / "src" / "drop.log").write_text("drop\n")
+    (source / "README.md").write_text("drop\n")
+    bundle = build_directory_bundle(source, include_regexes=[r"\.tcl$"])
+    _, chunks = build_all_frames(
+        source.name + BUNDLE_SUFFIX,
+        bundle.data,
+        compute_sha256(bundle.data),
+        compute_md5(bundle.data),
+    )
+    frames = tmp_path / "filtered-frames"
+    frames.mkdir()
+    paths = []
+    for chunk in chunks:
+        path = frames / ("frame_%04d.ppm" % chunk.index)
+        path.write_bytes(matrix_to_ppm(generate_matrix(chunk.encode()), module_size=10))
+        paths.append(path)
+
+    output_parent = tmp_path / "filtered-received"
+    result = run_receiver_from_images(paths, output_parent)
+    restored = output_parent / source.name
+
+    assert result.success, result.message
+    assert (restored / "src" / "keep.tcl").read_text() == "puts keep\n"
+    assert not (restored / "src" / "drop.log").exists()
+    assert not (restored / "README.md").exists()

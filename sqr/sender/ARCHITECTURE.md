@@ -41,6 +41,9 @@ build_all_frames(filename, raw, sha256, md5, max_chars, use_zstd)   ← chunker.
 
 发送目录时，信息包内的 `.sqr-bundle.json` 保存根目录、规范化相对路径、空目录、文件大小和逐文件 SHA-256；符号链接与特殊文件在打包阶段拒绝。信息包随后完全复用单文件 SQ1 链路。
 
+`--include-regex` 可重复传入，对文件 basename 执行 `re.search`，多个表达式按
+OR。启用后，bundle 只保留匹配文件及其祖先目录；可用 `(?i)` 开启忽略大小写。
+
 ## 文件
 
 ### `compressor.py` — 压缩 + Base64 编码（92 行）

@@ -114,6 +114,10 @@ SHA-256；随后仍走原有 gzip/zstd、Base64、SQ1 分片和 QR 渲染。接�
 重复路径及清单外成员，解包到 `.sqr-partial-*`，全部逐文件校验通过后原子发布
 根目录。符号链接与特殊文件在发送端直接拒绝。
 
+可重复的 `send --include-regex <pattern>` 在目录扫描阶段用 Python `re.search`
+匹配文件 basename；多个 pattern 按 OR。启用筛选后，只把匹配文件及其必要祖先
+目录写入 bundle，避免把无关空目录或兄弟目录带到外网。
+
 ### 1. 去 Pillow 化（发送端零安装的关键）
 
 Pillow 有 C 扩展，内网无法 pip install。发送端用两层手段绕过：

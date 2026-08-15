@@ -62,6 +62,46 @@ class TestBundleBuilder:
         with pytest.raises(ValueError, match="symbolic links"):
             build_directory_bundle(source)
 
+    def test_include_regex_matches_basename_and_keeps_ancestors(self, tmp_path):
+        source = _sample_tree(tmp_path)
+        (source / "unrelated" / "empty").mkdir(parents=True)
+
+        built = build_directory_bundle(source, include_regexes=[r"\.txt$"])
+
+        with zipfile.ZipFile(BytesIO(built.data)) as archive:
+            names = set(archive.namelist())
+        assert source.name + "/hello.txt" in names
+        assert source.name + "/nested/bytes.bin" not in names
+        assert source.name + "/nested/" not in names
+        assert source.name + "/unrelated/" not in names
+        assert built.file_count == 1
+        assert built.directory_count == 1
+
+    def test_multiple_include_regexes_use_or(self, tmp_path):
+        source = _sample_tree(tmp_path)
+        built = build_directory_bundle(
+            source, include_regexes=[r"^hello", r"bytes\.bin$"]
+        )
+        with zipfile.ZipFile(BytesIO(built.data)) as archive:
+            names = set(archive.namelist())
+        assert source.name + "/hello.txt" in names
+        assert source.name + "/nested/bytes.bin" in names
+        assert source.name + "/nested/empty.bin" not in names
+        assert source.name + "/nested/" in names
+        assert built.file_count == 2
+
+    def test_include_regex_uses_search_and_supports_inline_flags(self, tmp_path):
+        source = _sample_tree(tmp_path)
+        (source / "REPORT.CSV").write_text("x")
+        built = build_directory_bundle(source, include_regexes=[r"(?i)report\.csv"])
+        with zipfile.ZipFile(BytesIO(built.data)) as archive:
+            assert source.name + "/REPORT.CSV" in archive.namelist()
+
+    def test_invalid_include_regex_is_friendly_error(self, tmp_path):
+        source = _sample_tree(tmp_path)
+        with pytest.raises(ValueError, match="invalid include regex"):
+            build_directory_bundle(source, include_regexes=["["])
+
 
 class TestBundleExtractor:
     def test_roundtrip_preserves_tree_and_bytes(self, tmp_path):

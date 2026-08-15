@@ -19,7 +19,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - 接收端（屏幕）：`python3 -m sqr.cli receive --output <path>`（文件时为输出文件；目录包时为输出父目录）
   - 接收端（image 批量）：`python3 -m sqr.cli decode --images <dir> --output <path>`（扫描目录 PPM/PNG/JPG 批量解码；自动写文件或安全还原目录）
   - 打包产物：`dist/sqr-sender-src.zip`（约 58 KB，解压后 `./send.sh <file-or-directory>`）
-- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **166 passed**）
+- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **171 passed**）
 - **Phase 完成情况**：Phase 1–6 **全部完成**
   - P1 协议核心（`sqr/protocol.py` / `sqr/sender/compressor.py` / `sqr/sender/chunker.py`）
   - P2 vendor + QR 渲染（`sqr/vendor/qrcode/` + `sqr/sender/qr_render.py`，PIL stub 实现 zero-install）
@@ -28,7 +28,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - P5 打包与启动器（`build/bundle_sender.py` + `launcher/`）
   - P6 GUI 区域选择器（`sqr/receiver/region_selector.py`）
   - 各 Phase 详细设计见 `implementation-plan.md` §4 + §14
-- **测试覆盖**（当前 166 项）：
+- **测试覆盖**（当前 171 项）：
 
   | 测试文件 | 数量 | 覆盖范围 |
   |---|---|---|
@@ -40,8 +40,8 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   | `test_image_decoder.py` | 8 | **run_receiver_from_images：round-trip + 顺序无关 + manifest/数据帧缺失 + 回调（t9 新增）** |
   | `test_roundtrip.py` | 10 | 文件→QR→解码→校验 端到端（3 fixture） |
   | `test_sender_bundle_compat.py` | 5 | Python 3.6 语法、无新式 typing 运行时依赖、启动器无 tkinter、优先内网 Python 3.9 |
-  | `test_bundle.py` | 9 | 目录确定性封装、安全解包、Unicode/二进制/空目录、符号链接/路径穿越/篡改拒绝 |
-  | `test_directory_roundtrip.py` | 2 | 目录→SQ1 QR image→解码→安全还原端到端、损坏整包不发布 |
+  | `test_bundle.py` | 13 | 目录确定性封装、安全解包、正则筛选、Unicode/二进制/空目录、符号链接/路径穿越/篡改拒绝 |
+  | `test_directory_roundtrip.py` | 3 | 目录→SQ1 QR image→解码→安全还原端到端、正则筛选 round-trip、损坏整包不发布 |
 
 - **当前最高优先级未完成功能**：**真实屏幕端到端验证**（VMware + 物理 QR 播放/截屏环境下跑完整 round-trip，校验 MD5 `fd3b2ff5b10c902575332e8bbdd616f9` 与字节数 29816）。
 - **当前 blocker**：**环境 blocker，非代码 blocker**——需要可用的 VMware + 内网发送端屏幕 + 外网截图三件套；代码层面无 blocker。
@@ -64,6 +64,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 | grid Auto 改逐张全屏播放 | `t8-grid-auto-per-frame` | passing | 15 | grid 模式 Auto ON → 进 player-stage 全屏单张逐帧轮播（原为整页翻）；Auto OFF 回 grid 多张概览；cycle 零回归（playMode=page）— 138 passed |
 | 接收端 image 批量解码 | `t9-decode-from-images` | passing | 15 | `sqr decode --images <dir> [--image <f>...] --output <path>` 扫描二维码 image 批量 pyzbar 解码 → 组装 → 还原；复用 assembler/verifier 不动 runner.py — 146 passed |
 | 目录信息包传输 | `t11-directory-bundle-transfer` | passing | 15 | 保留指定根目录、嵌套结构、普通/二进制/空文件和空目录；整包 + 逐文件 SHA-256；安全临时解包后原子发布 — 166 passed |
+| 目录文件名正则筛选 | `t12-directory-filename-regex-filter` | passing | 15 | 可重复 `--include-regex`；basename `re.search`、多个 OR，只保留匹配文件及必要祖先目录 — 171 passed |
 
 ---
 
@@ -454,3 +455,23 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **已知风险或后续范围**：M1 仍将完整 bundle/Base64/QR matrices 放在内存中；真正的大目录需要 `t5`/M2 的磁盘持久化、断点续收、分卷和 HTML 延迟加载。符号链接、权限、owner/ACL/xattr 不在 M1 支持范围。真实屏幕目录 round-trip 仍依赖 `t1` 的 VMware 环境。
 - **提交记录**：本轮以 `feat(bundle): transfer directory trees safely via SQ1 — 166 tests pass` 提交。
 - **下一步最佳动作**：有 VMware 环境时做真实屏幕目录 round-trip；否则推进 `t5-large-file-transfer` 的持久化/分卷设计。
+
+### Session 013 — 目录文件名正则筛选（t12-directory-filename-regex-filter）
+
+- **日期**：2026-08-15
+- **本轮目标**：发送目录时通过可重复的 `--include-regex` 筛选同步文件；正则对 basename 执行 `re.search`，多个表达式按 OR，保留匹配文件所需的祖先目录。
+- **启动基线**：`.venv/bin/python -m pytest tests/ -q` → **166 passed in 4.93s**；`in_progress_id` 原为 null；原有未跟踪 `sqr_output.txt` / `sqr_sender.html` 保持不动。
+- **已完成**：
+  1. `build_directory_bundle(source, include_regexes=...)` 编译 Python 正则并对文件 basename 执行 `re.search`；多个表达式按 OR。
+  2. 启用筛选时不保留无关目录，只保留 bundle 根目录和匹配文件所需祖先目录；未传筛选时仍完整保留空目录，零回归。
+  3. CLI `send` 新增可重复 `--include-regex PATTERN`；单文件误用时友好报错，非法正则返回明确错误；输出显示实际文件/目录/字节数与 Filters。
+  4. 更新 bundle/发送端架构说明和 Tier 1 README，重建 `dist/sqr-sender-src.zip`（约 59KB）。
+- **运行过的验证**：
+  - `test_bundle.py` → **13 passed**；`test_directory_roundtrip.py` → **3 passed**。
+  - `.venv/bin/python -m pytest tests/ -q` → **171 passed in 5.07s**。
+  - CLI `--include-regex '\\.txt$'` → 3 PPM → decode SUCCESS；恢复结果仅有 `hello.txt` 与 `nested/data.txt`，无关空目录未传输。
+  - 非法 `--include-regex '['` → exit 1 + 友好错误。
+  - 重建后的 `dist/sqr-sender/send.sh ... --include-regex '^hello'` → 仅 1 文件/1 目录，生成 2 帧 HTML。
+- **更新过的文件或工件**：`sqr/bundle/builder.py`、`sqr/cli.py`、`tests/{test_bundle,test_directory_roundtrip}.py`、`build/bundle_sender.py`、`dist/sqr-sender-src.zip`、顶层/发送端 ARCHITECTURE.md、`feature_list.json`、本文件。
+- **已知边界**：筛选只匹配 basename，不匹配相对路径；默认大小写敏感，可用 `(?i)`；当前只有 include，没有 exclude。正则只影响普通文件，扫描期间遇到任何符号链接/特殊文件仍按安全规则拒绝整个目录。
+- **提交记录**：本轮以 `feat(bundle): filter directory files by regex — 171 tests pass` 提交。

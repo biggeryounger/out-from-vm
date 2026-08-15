@@ -31,7 +31,9 @@ def cmd_send(args: argparse.Namespace) -> int:
     if file_path.is_dir():
         from sqr.bundle.builder import BUNDLE_SUFFIX, build_directory_bundle
         try:
-            bundle = build_directory_bundle(file_path)
+            bundle = build_directory_bundle(
+                file_path, include_regexes=args.include_regex
+            )
         except (OSError, ValueError) as exc:
             print(f"Error: cannot bundle directory: {exc}", file=sys.stderr)
             return 1
@@ -42,7 +44,12 @@ def cmd_send(args: argparse.Namespace) -> int:
         print(f"Folders:   {bundle.directory_count}")
         print(f"File bytes:{bundle.total_file_bytes}")
         print(f"Bundle:    {len(raw)} bytes")
+        if args.include_regex:
+            print(f"Filters:   {' OR '.join(args.include_regex)}")
     elif file_path.is_file():
+        if args.include_regex:
+            print("Error: --include-regex can only be used with a directory", file=sys.stderr)
+            return 1
         raw = file_path.read_bytes()
         try:
             raw.decode("utf-8")
@@ -351,6 +358,8 @@ def main() -> int:
                             help="Max chars per QR payload (default: 1200)")
     send_parser.add_argument("--zstd", action="store_true",
                             help="Use zstd compression (default: gzip)")
+    send_parser.add_argument("--include-regex", action="append", default=None,
+                            help="Directory only: include basenames matching this Python regex; repeat for OR")
     send_parser.add_argument("--output-dir", default=None,
                             help="Save QR PPM frames to this dir (debug)")
     send_parser.add_argument("--no-manifest", action="store_true",

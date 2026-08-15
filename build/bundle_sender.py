@@ -116,6 +116,7 @@ Options:
   --interval 1.2          Seconds per QR frame in cycle HTML
   --error-correction M    QR error correction: L/M/Q/H
   --max-payload 1200      Max chars per QR payload
+  --include-regex <regex>  Directory only; include matching filenames (repeat = OR)
   --output-dir <dir>      Save PPM frames (debug)
   --renderer terminal     Display QR frames in the terminal instead
   --html-cycle <path>     Write cycle HTML to a custom path

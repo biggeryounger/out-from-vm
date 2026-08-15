@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 import stat
 import zipfile
 from io import BytesIO
@@ -42,11 +43,13 @@ def _validate_component(name):
         raise ValueError("unsafe directory bundle path component: %r" % name)
 
 
-def build_directory_bundle(source):
+def build_directory_bundle(source, include_regexes=None):
     """Return a deterministic bundle for *source* without exposing absolute paths.
 
     Only regular files and directories are accepted. Symlinks and special files
     are rejected because recreating them safely across platforms is ambiguous.
+    If include_regexes is non-empty, a file is included when re.search against
+    its basename matches any expression; only required ancestor dirs are kept.
     """
     source = Path(source)
     if not source.is_dir():
@@ -57,10 +60,15 @@ def build_directory_bundle(source):
     root_name = source.name
     _validate_component(root_name)
 
+    try:
+        patterns = [re.compile(value) for value in (include_regexes or [])]
+    except re.error as exc:
+        raise ValueError("invalid include regex: %s" % exc)
+
     entries = []  # type: List[Dict[str, object]]
     payloads = {}  # type: Dict[str, bytes]
+    directory_paths = {root_name}
 
-    entries.append({"path": root_name, "type": "directory"})
     for current, dir_names, file_names in os.walk(str(source), followlinks=False):
         current_path = Path(current)
         dir_names.sort()
@@ -75,7 +83,8 @@ def build_directory_bundle(source):
             if not stat.S_ISDIR(mode):
                 raise ValueError("special filesystem entry is not supported: %s" % path)
             rel = path.relative_to(source).as_posix()
-            entries.append({"path": root_name + "/" + rel, "type": "directory"})
+            if not patterns:
+                directory_paths.add(root_name + "/" + rel)
 
         for name in file_names:
             _validate_component(name)
@@ -85,11 +94,16 @@ def build_directory_bundle(source):
             before = path.stat()
             if not stat.S_ISREG(before.st_mode):
                 raise ValueError("special filesystem entry is not supported: %s" % path)
+            if patterns and not any(pattern.search(name) for pattern in patterns):
+                continue
             data = path.read_bytes()
             after = path.stat()
             if before.st_size != after.st_size or before.st_mtime_ns != after.st_mtime_ns:
                 raise ValueError("file changed while bundle was being created: %s" % path)
             rel = root_name + "/" + path.relative_to(source).as_posix()
+            parent_parts = rel.split("/")[:-1]
+            for depth in range(1, len(parent_parts) + 1):
+                directory_paths.add("/".join(parent_parts[:depth]))
             payloads[rel] = data
             entries.append({
                 "path": rel,
@@ -98,6 +112,9 @@ def build_directory_bundle(source):
                 "sha256": _sha256(data),
             })
 
+    entries.extend(
+        {"path": path, "type": "directory"} for path in directory_paths
+    )
     entries.sort(key=lambda entry: str(entry["path"]))
     file_count = sum(1 for entry in entries if entry["type"] == "file")
     directory_count = sum(1 for entry in entries if entry["type"] == "directory")

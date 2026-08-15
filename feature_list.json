@@ -275,6 +275,22 @@
       ],
       "evidence": "166 passed in 4.95s（原 155 + 新增 11）；test_bundle.py + test_directory_roundtrip.py 合计 11 passed，覆盖确定性打包、Unicode/二进制/空文件/空目录、符号链接拒绝、目标冲突、路径穿越、篡改检测与 QR image 目录 round-trip。CLI 烟雾：source 目录 2 文件/3 目录/53338 文件字节 → 54530B bundle → 3 PPM 帧 → decode SUCCESS → /restored/source，diff -r identical。dist 源码包约 58KB，从 dist/sqr-sender/send.sh 直接发送目录成功。",
       "notes": "M1 使用 stdlib ZIP_STORED 作为内部容器、现有 gzip/zstd 作为外层压缩；信息包内 .sqr-bundle.json 保存规范化目录清单与逐文件 SHA-256。默认拒绝符号链接/特殊文件，接收端手工安全解包到临时目录并原子提交；大型目录断点续收/分卷留给 t5/M2。"
+    },
+    {
+      "id": "t12-directory-filename-regex-filter",
+      "priority": 15,
+      "area": "sender",
+      "title": "目录同步文件名正则筛选",
+      "user_visible_behavior": "send <directory> 可重复传入 --include-regex <pattern>，只打包文件名被任一 Python 正则匹配的文件，并保留这些文件所需的目录结构",
+      "status": "passing",
+      "verification": [
+        "test_bundle.py 覆盖单正则、多正则 OR、仅匹配文件的祖先目录、非法正则",
+        "test_directory_roundtrip.py 覆盖筛选后的 QR image 目录 round-trip",
+        "全量 pytest 全绿且无筛选目录/单文件行为零回归",
+        "重建 Tier 1 发送端并实跑 --include-regex"
+      ],
+      "evidence": "171 passed in 5.07s（166 基线 + 5 新增）；test_bundle.py 13 passed、test_directory_roundtrip.py 3 passed。覆盖单正则、多正则 OR、basename re.search、(?i)、非法正则、祖先目录裁剪和筛选后 QR image round-trip。CLI：--include-regex '\\.txt$' → decode SUCCESS，仅恢复 hello.txt + nested/data.txt，未恢复无关 empty 目录；Tier 1 包内 --include-regex '^hello' → 1 文件/1 目录/2 QR 帧成功。",
+      "notes": "匹配目标固定为 basename（文件名本身，不含父目录），使用 re.search；大小写遵循 Python 正则默认规则，用户可用 (?i) 开启忽略大小写；多个参数按 OR。"
     }
   ]
 }
