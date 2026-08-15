@@ -291,6 +291,22 @@
       ],
       "evidence": "171 passed in 5.07s（166 基线 + 5 新增）；test_bundle.py 13 passed、test_directory_roundtrip.py 3 passed。覆盖单正则、多正则 OR、basename re.search、(?i)、非法正则、祖先目录裁剪和筛选后 QR image round-trip。CLI：--include-regex '\\.txt$' → decode SUCCESS，仅恢复 hello.txt + nested/data.txt，未恢复无关 empty 目录；Tier 1 包内 --include-regex '^hello' → 1 文件/1 目录/2 QR 帧成功。",
       "notes": "匹配目标固定为 basename（文件名本身，不含父目录），使用 re.search；大小写遵循 Python 正则默认规则，用户可用 (?i) 开启忽略大小写；多个参数按 OR。"
+    },
+    {
+      "id": "t13-gui-directory-output-picker",
+      "priority": 10,
+      "area": "receiver",
+      "title": "接收端 GUI 选择目录包保存父目录",
+      "user_visible_behavior": "GUI 输出路径区域同时提供选择文件和选择目录按钮；接收目录二维码时可选择父目录，成功后显示实际还原的根目录路径",
+      "status": "passing",
+      "verification": [
+        "新增 GUI helper 单元测试：选择目录写入 output_var，取消不改值",
+        "import sqr.receiver.app 成功",
+        "全量 pytest 全绿",
+        "手动启动 GUI 确认输出区域同时显示文件/目录按钮"
+      ],
+      "evidence": "173 passed in 5.20s（171 基线 + tests/test_receiver_app.py 2 项）；目录选择 helper 验证选中路径写入 output_var 并记录父目录语义、取消时不改原值；import sqr.receiver.app OK。GUI 代码输出区包含独立“选择文件…”与“选择目录…”按钮，busy 状态同步禁用；完成回调沿用 restorer 返回的实际根目录 path。视觉工具受本机多个同 bundle Python/Tk 旧窗口干扰，只聚焦到旧实例，未把该截图计为新界面证据。",
+      "notes": "不改变后端语义：普通文件时 output 是目标文件；目录包时 output 是父目录，restorer 返回并展示实际 <output>/<root_name>。"
     }
   ]
 }

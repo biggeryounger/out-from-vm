@@ -19,7 +19,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - 接收端（屏幕）：`python3 -m sqr.cli receive --output <path>`（文件时为输出文件；目录包时为输出父目录）
   - 接收端（image 批量）：`python3 -m sqr.cli decode --images <dir> --output <path>`（扫描目录 PPM/PNG/JPG 批量解码；自动写文件或安全还原目录）
   - 打包产物：`dist/sqr-sender-src.zip`（约 58 KB，解压后 `./send.sh <file-or-directory>`）
-- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **171 passed**）
+- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **173 passed**）
 - **Phase 完成情况**：Phase 1–6 **全部完成**
   - P1 协议核心（`sqr/protocol.py` / `sqr/sender/compressor.py` / `sqr/sender/chunker.py`）
   - P2 vendor + QR 渲染（`sqr/vendor/qrcode/` + `sqr/sender/qr_render.py`，PIL stub 实现 zero-install）
@@ -28,7 +28,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - P5 打包与启动器（`build/bundle_sender.py` + `launcher/`）
   - P6 GUI 区域选择器（`sqr/receiver/region_selector.py`）
   - 各 Phase 详细设计见 `implementation-plan.md` §4 + §14
-- **测试覆盖**（当前 171 项）：
+- **测试覆盖**（当前 173 项）：
 
   | 测试文件 | 数量 | 覆盖范围 |
   |---|---|---|
@@ -42,6 +42,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   | `test_sender_bundle_compat.py` | 5 | Python 3.6 语法、无新式 typing 运行时依赖、启动器无 tkinter、优先内网 Python 3.9 |
   | `test_bundle.py` | 13 | 目录确定性封装、安全解包、正则筛选、Unicode/二进制/空目录、符号链接/路径穿越/篡改拒绝 |
   | `test_directory_roundtrip.py` | 3 | 目录→SQ1 QR image→解码→安全还原端到端、正则筛选 round-trip、损坏整包不发布 |
+  | `test_receiver_app.py` | 2 | GUI 目录包保存父目录选择、取消不改输出路径（无 Tk 窗口 helper 测试） |
 
 - **当前最高优先级未完成功能**：**真实屏幕端到端验证**（VMware + 物理 QR 播放/截屏环境下跑完整 round-trip，校验 MD5 `fd3b2ff5b10c902575332e8bbdd616f9` 与字节数 29816）。
 - **当前 blocker**：**环境 blocker，非代码 blocker**——需要可用的 VMware + 内网发送端屏幕 + 外网截图三件套；代码层面无 blocker。
@@ -65,6 +66,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 | 接收端 image 批量解码 | `t9-decode-from-images` | passing | 15 | `sqr decode --images <dir> [--image <f>...] --output <path>` 扫描二维码 image 批量 pyzbar 解码 → 组装 → 还原；复用 assembler/verifier 不动 runner.py — 146 passed |
 | 目录信息包传输 | `t11-directory-bundle-transfer` | passing | 15 | 保留指定根目录、嵌套结构、普通/二进制/空文件和空目录；整包 + 逐文件 SHA-256；安全临时解包后原子发布 — 166 passed |
 | 目录文件名正则筛选 | `t12-directory-filename-regex-filter` | passing | 15 | 可重复 `--include-regex`；basename `re.search`、多个 OR，只保留匹配文件及必要祖先目录 — 171 passed |
+| GUI 目录包保存目录 | `t13-gui-directory-output-picker` | passing | 10 | 输出区提供“选择文件…”/“选择目录…”；目录包选父目录，完成后显示实际根目录 — 173 passed |
 
 ---
 
@@ -475,3 +477,22 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **更新过的文件或工件**：`sqr/bundle/builder.py`、`sqr/cli.py`、`tests/{test_bundle,test_directory_roundtrip}.py`、`build/bundle_sender.py`、`dist/sqr-sender-src.zip`、顶层/发送端 ARCHITECTURE.md、`feature_list.json`、本文件。
 - **已知边界**：筛选只匹配 basename，不匹配相对路径；默认大小写敏感，可用 `(?i)`；当前只有 include，没有 exclude。正则只影响普通文件，扫描期间遇到任何符号链接/特殊文件仍按安全规则拒绝整个目录。
 - **提交记录**：本轮以 `feat(bundle): filter directory files by regex — 171 tests pass` 提交。
+
+### Session 014 — GUI 目录包保存父目录选择器（t13-gui-directory-output-picker）
+
+- **日期**：2026-08-15
+- **本轮目标**：补齐接收端 GUI 的目录还原入口：输出区域增加“选择目录”按钮，明确普通文件路径与目录包父目录的不同语义，并在成功事件中展示实际还原根目录。
+- **启动基线**：`.venv/bin/python -m pytest tests/ -q` → **171 passed in 5.17s**；原有未跟踪 `sqr_output.txt` / `sqr_sender.html` 保持不动。
+- **已完成**：
+  1. GUI 输出区由单一“浏览…”改为独立“选择文件…”和“选择目录…”按钮，标签改为“输出路径”。
+  2. 新增说明“普通文件：填写目标文件；目录包：选择保存父目录”，subtitle 同步说明可还原完整目录结构。
+  3. `_browse_output_directory()` 用 `askdirectory` 写入 `output_var` 并记录父目录语义；接收进行中两个输出选择按钮会一起禁用。
+  4. 完成事件继续使用后端 `restorer` 回传的实际路径，因此目录包弹窗显示 `<所选父目录>/<原根目录名>`。
+  5. 新增 `tests/test_receiver_app.py` 两项无窗口 helper 测试；接收端架构文档同步更新。
+- **运行过的验证**：
+  - `.venv/bin/python -m pytest tests/test_receiver_app.py -q` → **2 passed**。
+  - `.venv/bin/python -c 'import sqr.receiver.app'` → import OK。
+  - `.venv/bin/python -m pytest tests/ -q` → **173 passed in 5.20s**。
+- **视觉核验说明**：按 computer-use 技能启动新 GUI，但本机已有多个相同 Python bundle 的旧 Tk 进程，界面工具只能聚焦旧实例；未把旧界面截图作为新版本证据，也未关闭可能属于用户的旧窗口。新进程已停止。
+- **更新过的文件**：`sqr/receiver/app.py`、`sqr/receiver/ARCHITECTURE.md`、`tests/test_receiver_app.py`、`feature_list.json`、本文件。
+- **提交记录**：本轮以 `feat(gui): choose parent directory for bundle restore — 173 tests pass` 提交。

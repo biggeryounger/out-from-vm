@@ -153,11 +153,12 @@ GUI 全屏区域选择器，**支持多显示器/双屏**。
 
 | 符号 | 说明 |
 |---|---|
-| `ReceiverApp` | 主窗口类：输出文件/截图间隔/框选按钮/开始停止/进度条/日志区 |
+| `ReceiverApp` | 主窗口类：输出文件或目录包父目录/截图间隔/框选按钮/开始停止/进度条/日志区 |
 | `ReceiverApp._on_select_region` | 嵌入 `RegionSelector(master=self.root)` 复用 Tk root |
 | `ReceiverApp._on_start` / `_on_stop` | 启停后台 daemon 线程 |
 | `ReceiverApp._run_capture` | 后台线程：调 `run_receiver`，把事件丢进 `queue.Queue` |
 | `ReceiverApp._drain_queue` | 主线程 `root.after(100ms)` 轮询队列更新 UI |
+| `ReceiverApp._browse_output_directory` | 打开目录选择器；目录包将在所选父目录下恢复 manifest 中的根目录名 |
 | `launch()` | `() -> int` 启动 GUI，返回退出码 |
 
 **线程模型（重要）**：tkinter 非线程安全，后台线程**绝不直接触碰 widget**。事件类型 `_EV_PROGRESS` / `_EV_COMPLETE` / `_EV_ERROR` / `_EV_LOG` 通过 `queue.Queue` 传递，主线程轮询消费。
