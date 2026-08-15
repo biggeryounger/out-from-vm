@@ -8,6 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SENDER_SOURCES = [PROJECT_ROOT / "sqr" / "protocol.py", PROJECT_ROOT / "sqr" / "cli.py"]
 SENDER_SOURCES.extend((PROJECT_ROOT / "sqr" / "sender").rglob("*.py"))
+SENDER_SOURCES.extend((PROJECT_ROOT / "sqr" / "bundle").rglob("*.py"))
 SENDER_SOURCES.extend((PROJECT_ROOT / "sqr" / "vendor").rglob("*.py"))
 
 

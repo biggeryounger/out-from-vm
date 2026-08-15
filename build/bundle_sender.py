@@ -80,7 +80,7 @@ def main() -> int:
 
     print("[4/4] Done.")
     print(f"\n  Bundle: {zip_path}")
-    print(f"  Usage:  unzip {zip_path.name} && cd {BUNDLE_NAME} && ./send.sh <file>")
+    print(f"  Usage:  unzip {zip_path.name} && cd {BUNDLE_NAME} && ./send.sh <file-or-directory>")
     return 0
 
 
@@ -98,10 +98,15 @@ Python selection (Linux/macOS):
   - Override either choice with: PYTHON=/path/to/python3 ./send.sh <file>
 
 Usage (Linux/macOS):
-  ./send.sh <file.txt>
+  ./send.sh <file-or-directory>
 
 Usage (Windows):
-  send.bat <file.txt>
+  send.bat <file-or-directory>
+
+Directories are packed with their selected root name, nested structure,
+regular files, empty files, and empty directories. Symbolic links and special
+filesystem entries are rejected. The receiver restores a directory bundle
+under the output parent directory after full integrity verification.
 
 The default command writes sqr_sender.html in the current directory.
 Open that file in a browser to start the QR slideshow. Use the Save ZIP

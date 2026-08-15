@@ -1,7 +1,7 @@
 {
   "_comment": "机器可读的功能清单。与本文件冲突时以本文件为准；claude-progress.md「待办清单」只是人眼速览视图。agent 任何时候只能有一个功能处于 in_progress。",
   "schema_version": 1,
-  "updated": "2026-08-14",
+  "updated": "2026-08-15",
   "in_progress_id": null,
   "features": [
     {
@@ -259,6 +259,22 @@
       ],
       "evidence": "150 passed in 4.51s (pytest tests/ -q)；57 passed (test_qr_render.py 单独)。Playwright：5 帧 cycle HTML → click #save-zip-btn → download qr_frames.zip → zipfile.testzip()=None(OK) → 5 PNG qr_0..qr_4 (370x370) → pyzbar 全部解码成功 → 还原 SQ1 帧 match: True。",
       "notes": "纯 JS 零依赖（不引 JSZip，符合内网零安装哲学）。_ZIP_JS 含 CRC32 查表（IEEE 802.3）+ svgToPng 异步光栅化（serializeToString→Blob URL→Image.onload→canvas→toDataURL）+ buildZip STORE 无压缩组装。JS 源码无 <svg 字面量（保护 test_svg_count_equals_matrices）。打通'发送端 HTML → image zip → 接收端 image 批量解码（t9 + GUI 步骤③）'链路。涉及 sqr/sender/qr_render.py + tests/test_qr_render.py。"
+    },
+    {
+      "id": "t11-directory-bundle-transfer",
+      "priority": 15,
+      "area": "protocol",
+      "title": "目录信息包传输（保留目录结构与多文件内容）",
+      "user_visible_behavior": "python3 -m sqr.cli send <directory> 将所选目录封装为可校验信息包并复用 SQ1/QR 传输；新版 receive/decode 校验后在 --output 父目录下还原根目录、子目录、普通文件、空文件和空目录",
+      "status": "passing",
+      "verification": [
+        "python3 -m pytest tests/test_bundle.py -q 全绿（确定性打包、安全解包、恶意路径拒绝、逐文件校验）",
+        "python3 -m pytest tests/test_directory_roundtrip.py -q 全绿（目录 → SQ1 QR image → 解码 → 目录逐字节一致）",
+        "python3 -m pytest tests/ -q 全绿，单文件传输零回归",
+        "CLI 烟雾：send <directory> 生成 HTML，decode 后在输出父目录下恢复同名根目录"
+      ],
+      "evidence": "166 passed in 4.95s（原 155 + 新增 11）；test_bundle.py + test_directory_roundtrip.py 合计 11 passed，覆盖确定性打包、Unicode/二进制/空文件/空目录、符号链接拒绝、目标冲突、路径穿越、篡改检测与 QR image 目录 round-trip。CLI 烟雾：source 目录 2 文件/3 目录/53338 文件字节 → 54530B bundle → 3 PPM 帧 → decode SUCCESS → /restored/source，diff -r identical。dist 源码包约 58KB，从 dist/sqr-sender/send.sh 直接发送目录成功。",
+      "notes": "M1 使用 stdlib ZIP_STORED 作为内部容器、现有 gzip/zstd 作为外层压缩；信息包内 .sqr-bundle.json 保存规范化目录清单与逐文件 SHA-256。默认拒绝符号链接/特殊文件，接收端手工安全解包到临时目录并原子提交；大型目录断点续收/分卷留给 t5/M2。"
     }
   ]
 }

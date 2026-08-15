@@ -1,14 +1,15 @@
 # sqr/sender/ 架构
 
-> 内网发送端：把一个 UTF-8 文本文件变成屏幕上循环播放的 QR 码序列。
-> **零外部编译依赖** —— 仅需 Python 3.6+ stdlib + tkinter + vendor qrcode（PIL stub 兜底）。
+> 内网发送端：把 UTF-8 文本文件或目录信息包变成浏览器循环播放的 QR 码序列。
+> **零外部编译依赖** —— 仅需 Python 3.6+ stdlib + vendor qrcode（PIL stub 兜底）。
 
 ## 端到端数据流
 
 ```
-输入文件 (UTF-8 bytes)
+输入文件或目录
     │
     ▼  cli.cmd_send
+    │  目录 → sqr.bundle.build_directory_bundle → ZIP_STORED bytes
     │  compute_sha256 / compute_md5 / compute_file_id   ← sqr.protocol
     ▼
 build_all_frames(filename, raw, sha256, md5, max_chars, use_zstd)   ← chunker.py
@@ -32,11 +33,13 @@ build_all_frames(filename, raw, sha256, md5, max_chars, use_zstd)   ← chunker.
     │
     ├─► --output-dir : matrix_to_ppm()      ← 渲染器B，保存 PPM 调试帧
     ├─► --renderer terminal : matrix_to_unicode()  ← 渲染器C，终端降级
-    └─► 默认 : QRPlayer(matrices).run()      ← player.py
-                tkinter 全屏 Canvas 循环播放 (manifest→data_1..N→manifest→...)
+    └─► 默认 : matrices_to_html_grid(layout="cycle")
+                生成离线 HTML，全屏逐帧循环 (manifest→data_1..N→manifest→...)
 ```
 
-**帧序列设计**：manifest 帧（index=0）和所有数据帧（index=1..N）**混在同一个循环里反复播放**，让接收端无论从哪一帧开始截图都能逐步补齐（先收到 manifest 知道总量和校验信息，再收数据帧）。见 `player.QRPlayer._show_frame` 的 `self._current = (self._current + 1) % len(self._matrices)`。
+**帧序列设计**：manifest 帧（index=0）和所有数据帧（index=1..N）**混在同一个 HTML 循环里反复播放**，让接收端无论从哪一帧开始截图都能逐步补齐。
+
+发送目录时，信息包内的 `.sqr-bundle.json` 保存根目录、规范化相对路径、空目录、文件大小和逐文件 SHA-256；符号链接与特殊文件在打包阶段拒绝。信息包随后完全复用单文件 SQ1 链路。
 
 ## 文件
 
@@ -72,25 +75,13 @@ build_all_frames(filename, raw, sha256, md5, max_chars, use_zstd)   ← chunker.
 | `matrix_to_ppm` | `(qr_matrix, module_size=10) -> bytes` | **渲染器 B**：PPM P6 二进制，纯 stdlib。可被 Pillow `Image.open` 读。用于 round-trip 测试 |
 | `matrix_to_unicode` | `(qr_matrix) -> str` | **渲染器 C**：Unicode 半块字符（▀▄█ ），终端降级方案 |
 
-### `player.py` — tkinter 全屏循环播放器（132 行）
-
-| 符号 | 签名 | 说明 |
-|---|---|---|
-| `QRPlayer` | 类 | 全屏循环播放 QR 帧的 tkinter 窗口 |
-| `QRPlayer.__init__` | `(matrices, file_id, total, filename, module_size=10, interval_ms=1200, title="SQR Sender")` | |
-| `QRPlayer.run` | `() -> None` | 启动 tkinter mainloop（阻塞至 ESC/q 或窗口关闭）|
-| `QRPlayer.stop` | `() -> None` | 从外部线程请求停止（`root.after(0, root.quit)`）|
-| `run_player_from_matrices` | `(matrices, file_id, total, filename, module_size=10, interval_ms=1200) -> None` | 便捷封装 |
-
-播放器底部有 info 栏显示当前帧类型（`MANIFEST` / `DATA i/N`）、file_id、文件名、像素尺寸。用 `draw_matrix_on_canvas` 直接渲染，**不经过 Pillow / PhotoImage**。
-
 ## 依赖
 
 | 依赖 | 性质 | 用在哪 |
 |---|---|---|
 | `sqr.vendor` (+ qrcode) | 项目内置 | `qr_render.py` 生成矩阵 |
 | `sqr.protocol` | 项目共用层 | `chunker.py` 用 `Chunk` / `FileManifest` / `compute_*` |
-| `tkinter` | stdlib（需系统 tcl/tk） | `player.py` 全屏 Canvas |
+| `zipfile` | stdlib | `sqr.bundle.builder` 目录信息包 |
 | gzip / base64 / hashlib / binascii / math / json | stdlib | `compressor.py` / `chunker.py` |
 | `zstandard` | **可选** C 扩展，不打包 | `--zstd` 时尝试，无则回退 gzip |
 

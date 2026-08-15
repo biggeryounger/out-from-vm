@@ -28,21 +28,37 @@ def cmd_send(args: argparse.Namespace) -> int:
         print(f"Error: file not found: {file_path}", file=sys.stderr)
         return 1
 
-    raw = file_path.read_bytes()
-
-    try:
-        raw.decode("utf-8")
-    except UnicodeDecodeError:
-        print(f"Error: {file_path} is not valid UTF-8", file=sys.stderr)
+    if file_path.is_dir():
+        from sqr.bundle.builder import BUNDLE_SUFFIX, build_directory_bundle
+        try:
+            bundle = build_directory_bundle(file_path)
+        except (OSError, ValueError) as exc:
+            print(f"Error: cannot bundle directory: {exc}", file=sys.stderr)
+            return 1
+        raw = bundle.data
+        filename = bundle.root_name + BUNDLE_SUFFIX
+        print(f"Directory: {file_path}")
+        print(f"Files:     {bundle.file_count}")
+        print(f"Folders:   {bundle.directory_count}")
+        print(f"File bytes:{bundle.total_file_bytes}")
+        print(f"Bundle:    {len(raw)} bytes")
+    elif file_path.is_file():
+        raw = file_path.read_bytes()
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError:
+            print(f"Error: {file_path} is not valid UTF-8", file=sys.stderr)
+            return 1
+        filename = file_path.name
+        print(f"File:     {filename}")
+        print(f"Bytes:    {len(raw)}")
+    else:
+        print(f"Error: unsupported filesystem entry: {file_path}", file=sys.stderr)
         return 1
 
     sha256_hex = compute_sha256(raw)
     md5_hex = compute_md5(raw)
     file_id = compute_file_id(sha256_hex)
-    filename = file_path.name
-
-    print(f"File:     {filename}")
-    print(f"Bytes:    {len(raw)}")
     print(f"SHA-256:  {sha256_hex}")
     print(f"MD5:      {md5_hex}")
     print(f"File ID:  {file_id}")
@@ -324,8 +340,8 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command")
 
     # send
-    send_parser = subparsers.add_parser("send", help="Send file via QR codes")
-    send_parser.add_argument("file", help="UTF-8 text file to send")
+    send_parser = subparsers.add_parser("send", help="Send a file or directory via QR codes")
+    send_parser.add_argument("file", help="UTF-8 text file or directory to send")
     send_parser.add_argument("--interval", type=float, default=1.2,
                             help="Seconds per frame (default: 1.2)")
     send_parser.add_argument("--error-correction", default="M",
@@ -358,13 +374,13 @@ def main() -> int:
     send_parser.set_defaults(func=cmd_send)
 
     # receive
-    recv_parser = subparsers.add_parser("receive", help="Receive file via screen capture")
+    recv_parser = subparsers.add_parser("receive", help="Receive a file or directory via screen capture")
     recv_parser.add_argument("--region", default=None,
                             help="Capture region as x,y,w,h (omit to use GUI selector)")
     recv_parser.add_argument("--select", action="store_true",
                             help="Show GUI region selector (default if --region omitted)")
     recv_parser.add_argument("--output", default="sqr_output.txt",
-                            help="Output file path (default: sqr_output.txt)")
+                            help="Output file path, or parent directory for a directory bundle")
     recv_parser.add_argument("--interval", type=float, default=0.5,
                             help="Capture interval seconds (default: 0.5)")
     recv_parser.add_argument("--expected-sha256", default=None,
@@ -384,14 +400,14 @@ def main() -> int:
     # decode
     decode_parser = subparsers.add_parser(
         "decode",
-        help="Decode QR images to file (batch mode: from image files, no screen capture)",
+        help="Decode QR images to a file or directory bundle",
     )
     decode_parser.add_argument("--image", action="append", default=None,
                                help="Single image file (PPM/PNG/JPG); repeatable")
     decode_parser.add_argument("--images", default=None,
                                help="Directory to scan for QR images (.ppm/.png/.jpg)")
     decode_parser.add_argument("--output", default="sqr_decoded.txt",
-                               help="Output file path (default: sqr_decoded.txt)")
+                               help="Output file path, or parent directory for a directory bundle")
     decode_parser.add_argument("--expected-sha256", default=None,
                                help="Expected SHA-256 (overrides manifest)")
     decode_parser.add_argument("--expected-md5", default=None,

@@ -28,12 +28,13 @@
     │     gzip.decompress 或 zstandard
     ▼  restored bytes
     │
-    ▼  verify_restored_file(restored, manifest, ...)  ← verifier.py
-    │     校验 字节数 / SHA-256 / MD5 / UTF-8（全检查不短路）
+    ▼  restore_verified_payload(restored, manifest, ...)  ← restorer.py
+    │     外层校验 字节数 / SHA-256 / MD5
     │     CLI --expected-* 优先于 manifest
     ▼
     VerificationResult
-    │  success → output_path.write_bytes(restored)
+    │  普通文件 → output_path.write_bytes(restored)
+    │  目录包 → 安全解包、逐文件 SHA-256、原子发布根目录
     ▼
     on_complete 回调（更新进度条/日志/弹窗）
 ```
@@ -121,6 +122,13 @@ if result.success: output_path.write_bytes(restored)
 on_complete(result, output_path)
 return result
 ```
+
+### `restorer.py` — 文件/目录统一还原边界
+
+`restore_verified_payload` 由屏幕接收和 image 批量解码共同调用。普通文件维持
+原写入行为；manifest 文件名以 `.sqrbundle` 结尾或内容含 bundle index 时，
+把 `--output` 解释为输出父目录，调用 `sqr.bundle.extractor` 安全还原。目标根目录
+已存在时默认失败，不覆盖现有内容；失败的临时目录会清理。
 
 `stop_event`（`threading.Event`）让 GUI 的「停止」按钮能中断主循环。
 

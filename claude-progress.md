@@ -15,11 +15,11 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **仓库根目录**：`/Users/e2uninova-m4/Desktop/test_project/out-from-vm`
 - **Git 仓库**：独立 git repo（remote `origin` → `https://github.com/biggeryounger/out-from-vm.git`，分支 `main`，首次提交 `ed65481`，72 files / 11927 insertions）
 - **标准启动路径**：
-  - 发送端：`python3 -m sqr.cli send <file>`（默认写 cycle HTML 到 `sqr_sender.html`，浏览器打开即播）
-  - 接收端（屏幕）：`python3 -m sqr.cli receive --output <path>`（默认 GUI 框选）
-  - 接收端（image 批量）：`python3 -m sqr.cli decode --images <dir> --output <path>`（扫描目录 PPM/PNG/JPG 批量解码还原，无需屏幕截图）
-  - 打包产物：`dist/sqr-sender-src.zip`（约 54 KB / 37 files，解压后 `./send.sh <file>`）
-- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **155 passed**）
+  - 发送端：`python3 -m sqr.cli send <file-or-directory>`（默认写 cycle HTML 到 `sqr_sender.html`，浏览器打开即播）
+  - 接收端（屏幕）：`python3 -m sqr.cli receive --output <path>`（文件时为输出文件；目录包时为输出父目录）
+  - 接收端（image 批量）：`python3 -m sqr.cli decode --images <dir> --output <path>`（扫描目录 PPM/PNG/JPG 批量解码；自动写文件或安全还原目录）
+  - 打包产物：`dist/sqr-sender-src.zip`（约 58 KB，解压后 `./send.sh <file-or-directory>`）
+- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **166 passed**）
 - **Phase 完成情况**：Phase 1–6 **全部完成**
   - P1 协议核心（`sqr/protocol.py` / `sqr/sender/compressor.py` / `sqr/sender/chunker.py`）
   - P2 vendor + QR 渲染（`sqr/vendor/qrcode/` + `sqr/sender/qr_render.py`，PIL stub 实现 zero-install）
@@ -28,7 +28,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - P5 打包与启动器（`build/bundle_sender.py` + `launcher/`）
   - P6 GUI 区域选择器（`sqr/receiver/region_selector.py`）
   - 各 Phase 详细设计见 `implementation-plan.md` §4 + §14
-- **测试覆盖**（当前 155 项）：
+- **测试覆盖**（当前 166 项）：
 
   | 测试文件 | 数量 | 覆盖范围 |
   |---|---|---|
@@ -40,6 +40,8 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   | `test_image_decoder.py` | 8 | **run_receiver_from_images：round-trip + 顺序无关 + manifest/数据帧缺失 + 回调（t9 新增）** |
   | `test_roundtrip.py` | 10 | 文件→QR→解码→校验 端到端（3 fixture） |
   | `test_sender_bundle_compat.py` | 5 | Python 3.6 语法、无新式 typing 运行时依赖、启动器无 tkinter、优先内网 Python 3.9 |
+  | `test_bundle.py` | 9 | 目录确定性封装、安全解包、Unicode/二进制/空目录、符号链接/路径穿越/篡改拒绝 |
+  | `test_directory_roundtrip.py` | 2 | 目录→SQ1 QR image→解码→安全还原端到端、损坏整包不发布 |
 
 - **当前最高优先级未完成功能**：**真实屏幕端到端验证**（VMware + 物理 QR 播放/截屏环境下跑完整 round-trip，校验 MD5 `fd3b2ff5b10c902575332e8bbdd616f9` 与字节数 29816）。
 - **当前 blocker**：**环境 blocker，非代码 blocker**——需要可用的 VMware + 内网发送端屏幕 + 外网截图三件套；代码层面无 blocker。
@@ -61,6 +63,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 | HTML 循环播放 + 移除 tkinter | `t7-html-cycle-replace-tkinter` | passing | 15 | cycle 布局（全屏单 QR 自动循环，Auto:ON）+ 默认 send 写 sqr_sender.html + 彻底删除 player.py — 133 passed |
 | grid Auto 改逐张全屏播放 | `t8-grid-auto-per-frame` | passing | 15 | grid 模式 Auto ON → 进 player-stage 全屏单张逐帧轮播（原为整页翻）；Auto OFF 回 grid 多张概览；cycle 零回归（playMode=page）— 138 passed |
 | 接收端 image 批量解码 | `t9-decode-from-images` | passing | 15 | `sqr decode --images <dir> [--image <f>...] --output <path>` 扫描二维码 image 批量 pyzbar 解码 → 组装 → 还原；复用 assembler/verifier 不动 runner.py — 146 passed |
+| 目录信息包传输 | `t11-directory-bundle-transfer` | passing | 15 | 保留指定根目录、嵌套结构、普通/二进制/空文件和空目录；整包 + 逐文件 SHA-256；安全临时解包后原子发布 — 166 passed |
 
 ---
 
@@ -428,3 +431,26 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **更新过的文件或工件**：`launcher/send.sh`、`launcher/send.bat`、`build/bundle_sender.py`、`sqr/protocol.py`、`sqr/cli.py`、`sqr/sender/{compressor,chunker,qr_render}.py`、`sqr/vendor/__init__.py`、`tests/test_sender_bundle_compat.py`、`dist/sqr-sender-src.zip`、`feature_list.json`、`claude-progress.md`。
 - **已知风险**：Windows `send.bat` 在 macOS 上无法实跑，但与已验证的 shell 启动链路使用同一 Python/vendor 入口。这是源码包，内网机器仍需 Python 3.6+ 和现代浏览器；无 Python 环境需完成 t2 PyInstaller 打包。
 - **提交记录**：本轮改动将通过 `codex/sender-python39-bundle` 分支发布。
+
+### Session 012 — 目录信息包传输（t11-directory-bundle-transfer）
+
+- **日期**：2026-08-15
+- **本轮目标**：实现 M1 目录信息包传输：发送端接受目录，保留指定根目录名、相对目录结构、普通文件内容、空文件和空目录；接收端在整包与逐文件校验通过后安全还原。
+- **启动基线**：系统 `python3` 缺 pytest；改用仓库 `.venv/bin/python`，全量 **155 passed in 4.66s**。工作区原有未跟踪 `sqr_output.txt` / `sqr_sender.html`，保持不动。
+- **已完成**：
+  1. 新增 `sqr/bundle/{builder,extractor}.py`：确定性 ZIP_STORED 信息包，`.sqr-bundle.json` 记录根目录、规范化路径、文件大小与逐文件 SHA-256；保留 Unicode、二进制/空文件及空目录。
+  2. 打包阶段拒绝符号链接和特殊文件，并检测读取期间发生变化的文件；绝对内网路径不会写入信息包。
+  3. 新增 `sqr/receiver/restorer.py`，屏幕接收与 image 解码共用同一恢复边界；整包 SHA-256/MD5/字节数通过后，目录包手工安全解包到 `.sqr-partial-*`，逐文件校验通过后原子发布。
+  4. 解包拒绝绝对路径、`..`、反斜杠、盘符、NUL、重复路径、清单外成员和超限展开；目标根目录已存在时默认失败且不覆盖。
+  5. `sqr.cli send` 位置参数扩展为 UTF-8 文件或目录；目录包接收时 `--output` 表示输出父目录。单文件行为保持不变。
+  6. 更新顶层、发送端和接收端架构文档；更新 Tier 1 README 并重建 `dist/sqr-sender-src.zip`（约 58KB）。
+- **运行过的验证**：
+  - `.venv/bin/python -m pytest tests/test_bundle.py tests/test_directory_roundtrip.py -q` → **11 passed**。
+  - 兼容回归组合（image decoder / roundtrip / protocol / sender bundle compat）→ **57 passed**。
+  - `.venv/bin/python -m pytest tests/ -q` → **166 passed in 4.95s**。
+  - CLI：2 文件/3 目录/53338 文件字节 → 54530B bundle → 3 PPM 帧 → `decode` SUCCESS → `restored/source`；`diff -r` identical。
+  - 重建后 `./dist/sqr-sender/send.sh <directory> --html-cycle ...` 实跑成功，生成 3 帧 Auto:ON HTML。
+- **更新过的文件或工件**：`sqr/bundle/`、`sqr/receiver/restorer.py`、`sqr/{cli.py,receiver/{runner,image_decoder,verifier}.py}`、3 份 ARCHITECTURE.md、`tests/{test_bundle,test_directory_roundtrip,test_sender_bundle_compat}.py`、`build/bundle_sender.py`、`dist/sqr-sender-src.zip`、`feature_list.json`、本文件。
+- **已知风险或后续范围**：M1 仍将完整 bundle/Base64/QR matrices 放在内存中；真正的大目录需要 `t5`/M2 的磁盘持久化、断点续收、分卷和 HTML 延迟加载。符号链接、权限、owner/ACL/xattr 不在 M1 支持范围。真实屏幕目录 round-trip 仍依赖 `t1` 的 VMware 环境。
+- **提交记录**：本轮以 `feat(bundle): transfer directory trees safely via SQ1 — 166 tests pass` 提交。
+- **下一步最佳动作**：有 VMware 环境时做真实屏幕目录 round-trip；否则推进 `t5-large-file-transfer` 的持久化/分卷设计。
