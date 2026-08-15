@@ -5,8 +5,6 @@
     python -m sqr.cli send <FILE> [OPTIONS]
     python -m sqr.cli receive --region x,y,w,h --output <PATH> [OPTIONS]
 """
-from __future__ import annotations
-
 import argparse
 import sys
 from pathlib import Path
@@ -232,7 +230,7 @@ def cmd_decode(args: argparse.Namespace) -> int:
     """接收端（image 批量模式）：从多个二维码 image 文件解码还原内容。"""
     from sqr.receiver.image_decoder import run_receiver_from_images
 
-    image_paths: list[Path] = []
+    image_paths: List[Path] = []
 
     if args.image:
         for f in args.image:
@@ -321,7 +319,9 @@ def main() -> int:
         prog="sqr",
         description="Screen QR Transfer — isolated network file transfer via QR codes",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    # argparse subparser ``required=`` was added in Python 3.7. Keep the
+    # sender bundle runnable on the advertised Python 3.6 baseline.
+    subparsers = parser.add_subparsers(dest="command")
 
     # send
     send_parser = subparsers.add_parser("send", help="Send file via QR codes")
@@ -401,6 +401,9 @@ def main() -> int:
     decode_parser.set_defaults(func=cmd_decode)
 
     args = parser.parse_args()
+    if not hasattr(args, "func"):
+        parser.print_help()
+        return 2
     return args.func(args)
 
 

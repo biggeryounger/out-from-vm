@@ -3,10 +3,8 @@
 将压缩编码后的 Base64 payload 按固定长度切片，
 为每片生成 Chunk 对象（含 CRC32），并构建 manifest 帧。
 """
-from __future__ import annotations
-
 import math
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from sqr.protocol import (
     Chunk,
@@ -22,7 +20,7 @@ def build_manifest(
     filename: str,
     raw_bytes: bytes,
     sha256_hex: str,
-    md5_hex: str | None,
+    md5_hex: Optional[str],
     compressed: CompressedPayload,
 ) -> FileManifest:
     """构建文件元数据。"""
@@ -112,7 +110,7 @@ def build_all_frames(
     filename: str,
     raw_bytes: bytes,
     sha256_hex: str,
-    md5_hex: str | None,
+    md5_hex: Optional[str],
     max_chars: int = 1200,
     use_zstd: bool = False,
 ) -> Tuple[FileManifest, List[Chunk]]:

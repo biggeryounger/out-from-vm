@@ -3,11 +3,8 @@
 不依赖 Pillow。通过 sqr.vendor 的 PIL stub 使 qrcode 导入成功，
 但只访问 qr.modules（纯布尔矩阵），从不调用 make_image()。
 """
-from __future__ import annotations
-
 import math
-from dataclasses import dataclass
-from typing import List
+from typing import List, NamedTuple
 
 # vendor bootstrap 必须在 import qrcode 之前
 import sqr.vendor  # noqa: F401
@@ -23,8 +20,7 @@ _EC_MAP = {
 }
 
 
-@dataclass(frozen=True)
-class QRMatrix:
+class QRMatrix(NamedTuple):
     """QR 矩阵 + 元数据。"""
 
     matrix: List[List[bool]]    # True = 黑块

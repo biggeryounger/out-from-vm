@@ -1,22 +1,25 @@
 import sys
 from bisect import bisect_left
 from typing import (
+    Any,
+    Dict,
     Generic,
+    List,
     NamedTuple,
     Optional,
+    Type,
     TypeVar,
     cast,
     overload,
-    Literal,
 )
 
 from qrcode import constants, exceptions, util
 from qrcode.image.base import BaseImage
 from qrcode.image.pure import PyPNGImage
 
-ModulesType = list[list[Optional[bool]]]
+ModulesType = List[List[Optional[bool]]]
 # Cache modules generated just based on the QR Code version
-precomputed_qr_blanks: dict[int, ModulesType] = {}
+precomputed_qr_blanks: Dict[int, ModulesType] = {}
 
 
 def make(data=None, **kwargs):
@@ -81,7 +84,7 @@ class QRCode(Generic[GenericImage]):
         error_correction=constants.ERROR_CORRECT_M,
         box_size=10,
         border=4,
-        image_factory: Optional[type[GenericImage]] = None,
+        image_factory: Optional[Type[GenericImage]] = None,
         mask_pattern=None,
     ):
         _check_box_size(box_size)
@@ -328,12 +331,12 @@ class QRCode(Generic[GenericImage]):
 
     @overload
     def make_image(
-        self, image_factory: Literal[None] = None, **kwargs
+        self, image_factory: Any = None, **kwargs
     ) -> GenericImage: ...
 
     @overload
     def make_image(
-        self, image_factory: type[GenericImageLocal] = None, **kwargs
+        self, image_factory: Type[GenericImageLocal] = None, **kwargs
     ) -> GenericImageLocal: ...
 
     def make_image(self, image_factory=None, **kwargs):
@@ -528,13 +531,13 @@ class QRCode(Generic[GenericImage]):
         code = [[False] * width] * self.border
         x_border = [False] * self.border
         for module in self.modules:
-            code.append(x_border + cast(list[bool], module) + x_border)
+            code.append(x_border + cast(List[bool], module) + x_border)
         code += [[False] * width] * self.border
 
         return code
 
     def active_with_neighbors(self, row: int, col: int) -> ActiveWithNeighbors:
-        context: list[bool] = []
+        context: List[bool] = []
         for r in range(row - 1, row + 2):
             for c in range(col - 1, col + 2):
                 context.append(self.is_constrained(r, c) and bool(self.modules[r][c]))

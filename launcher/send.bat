@@ -7,12 +7,6 @@ if errorlevel 1 (
     exit /b 1
 )
 
-python -c "import tkinter" 2>nul
-if errorlevel 1 (
-    echo [ERROR] tkinter not available. Reinstall Python and enable tcl/tk option.
-    exit /b 1
-)
-
 python -c "import sqr.vendor; import qrcode" 2>nul
 if errorlevel 1 (
     echo [ERROR] vendor qrcode failed to load. Bundle may be corrupted.

@@ -70,12 +70,12 @@
       "user_visible_behavior": "执行 build/bundle_sender.py 产出 dist/sqr-sender-src.zip，解压后 ./send.sh <file> 在仅有 Python 3.6+ 的环境直接启动，无需 pip",
       "status": "passing",
       "verification": [
-        "ls -la dist/sqr-sender-src.zip 确认存在，体积 ~44KB",
+        "ls -la dist/sqr-sender-src.zip 确认存在，体积约 54KB",
         "unzip -l dist/sqr-sender-src.zip 含 sqr/、send.sh、send.bat、README.txt",
         "解压到临时目录后 python3 -c \"import sys; sys.path.insert(0,'.'); import sqr.vendor; import qrcode\" 成功"
       ],
-      "evidence": "dist/sqr-sender-src.zip 存在，44KB（原 PROCESS.md §五记录，已迁入 claude-progress.md Session 001 历史）。",
-      "notes": "Phase 5 完成（仅 Tier 1）。Tier 2 PyInstaller 见 t2-packaging-tier2。涉及文件：build/bundle_sender.py、launcher/send.sh、launcher/send.bat。"
+      "evidence": "Session 011 重新打包并验证：dist/sqr-sender-src.zip 约 54KB / 37 files；从临时目录解压后 ./send.sh --help 成功，用 sample_small.txt 生成 2 帧 cycle HTML，包含 Auto: ON 和 Save ZIP。修复旧 Python 对 future annotations/dataclasses/typing.Literal/PEP585/argparse required 的兼容性问题；Linux/macOS 启动器优先使用 /opt/devtoolset/python3.9.12/bin/python3。5 项专用兼容性测试 + 全量 155 passed。",
+      "notes": "Phase 5 完成（仅 Tier 1）。Tier 1 现为 Python 3.6+ + 现代浏览器，不再依赖 tkinter；默认生成 sqr_sender.html。Tier 2 PyInstaller 见 t2-packaging-tier2。涉及文件：build/bundle_sender.py、launcher/send.sh、launcher/send.bat。"
     },
     {
       "id": "p6-gui-region-selector",

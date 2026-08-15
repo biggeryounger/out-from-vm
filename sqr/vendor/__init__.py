@@ -6,8 +6,6 @@
 
 用法：任何需要 import qrcode 的模块，先 import sqr.vendor。
 """
-from __future__ import annotations
-
 import os
 import sys
 import types

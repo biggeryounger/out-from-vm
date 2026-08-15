@@ -90,7 +90,12 @@ SQR Sender — Screen QR Transfer (Zero-Install)
 
 Requirements:
   - Python 3.6+
-  - tkinter (included with most Python installations)
+  - A modern web browser to open the generated HTML
+
+Python selection (Linux/macOS):
+  - Prefer /opt/devtoolset/python3.9.12/bin/python3 when it exists
+  - Otherwise use python3 from PATH
+  - Override either choice with: PYTHON=/path/to/python3 ./send.sh <file>
 
 Usage (Linux/macOS):
   ./send.sh <file.txt>
@@ -98,13 +103,18 @@ Usage (Linux/macOS):
 Usage (Windows):
   send.bat <file.txt>
 
+The default command writes sqr_sender.html in the current directory.
+Open that file in a browser to start the QR slideshow. Use the Save ZIP
+button in the page to export all QR frames as PNG images.
+
 Options:
-  --interval 1.2          Seconds per QR frame
+  --interval 1.2          Seconds per QR frame in cycle HTML
   --error-correction M    QR error correction: L/M/Q/H
   --max-payload 1200      Max chars per QR payload
   --output-dir <dir>      Save PPM frames (debug)
-  --renderer terminal     Use terminal instead of fullscreen window
-  --no-player             Only generate frames, don't display
+  --renderer terminal     Display QR frames in the terminal instead
+  --html-cycle <path>     Write cycle HTML to a custom path
+  --html-grid <path>      Write grid preview HTML to a custom path
 
 All dependencies are bundled in sqr/vendor/. No pip install needed.
 """

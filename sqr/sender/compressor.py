@@ -2,16 +2,12 @@
 
 纯 stdlib（gzip + base64）。zstd 可用时自动启用，否则回退 gzip。
 """
-from __future__ import annotations
-
 import base64
 import gzip
-from dataclasses import dataclass
-from typing import Tuple
+from typing import NamedTuple, Tuple
 
 
-@dataclass(frozen=True)
-class CompressedPayload:
+class CompressedPayload(NamedTuple):
     """压缩 + 编码后的结果。"""
 
     data_b64: str          # Base64 ASCII 字符串（无换行）

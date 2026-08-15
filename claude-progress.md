@@ -18,8 +18,8 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - 发送端：`python3 -m sqr.cli send <file>`（默认写 cycle HTML 到 `sqr_sender.html`，浏览器打开即播）
   - 接收端（屏幕）：`python3 -m sqr.cli receive --output <path>`（默认 GUI 框选）
   - 接收端（image 批量）：`python3 -m sqr.cli decode --images <dir> --output <path>`（扫描目录 PPM/PNG/JPG 批量解码还原，无需屏幕截图）
-  - 打包产物：`dist/sqr-sender-src.zip`（44 KB，解压后 `./send.sh <file>`）
-- **标准验证路径**：`python3 -m pytest tests/ -q`（基线应为 **146 passed** = 92 原始 + t6 新增 34 + t7 新增 7 + t8 新增 5 + t9 新增 8）
+  - 打包产物：`dist/sqr-sender-src.zip`（约 54 KB / 37 files，解压后 `./send.sh <file>`）
+- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **155 passed**）
 - **Phase 完成情况**：Phase 1–6 **全部完成**
   - P1 协议核心（`sqr/protocol.py` / `sqr/sender/compressor.py` / `sqr/sender/chunker.py`）
   - P2 vendor + QR 渲染（`sqr/vendor/qrcode/` + `sqr/sender/qr_render.py`，PIL stub 实现 zero-install）
@@ -28,7 +28,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - P5 打包与启动器（`build/bundle_sender.py` + `launcher/`）
   - P6 GUI 区域选择器（`sqr/receiver/region_selector.py`）
   - 各 Phase 详细设计见 `implementation-plan.md` §4 + §14
-- **测试覆盖**（146 项 = 92 原始 + 34 t6 + 7 t7 + 5 t8 + 8 t9）：
+- **测试覆盖**（当前 155 项）：
 
   | 测试文件 | 数量 | 覆盖范围 |
   |---|---|---|
@@ -39,6 +39,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   | `test_decoder.py` | 12 | **decode_qr_multi 多码解码 + decode_qr 向后兼容（t6 新增）** |
   | `test_image_decoder.py` | 8 | **run_receiver_from_images：round-trip + 顺序无关 + manifest/数据帧缺失 + 回调（t9 新增）** |
   | `test_roundtrip.py` | 10 | 文件→QR→解码→校验 端到端（3 fixture） |
+  | `test_sender_bundle_compat.py` | 5 | Python 3.6 语法、无新式 typing 运行时依赖、启动器无 tkinter、优先内网 Python 3.9 |
 
 - **当前最高优先级未完成功能**：**真实屏幕端到端验证**（VMware + 物理 QR 播放/截屏环境下跑完整 round-trip，校验 MD5 `fd3b2ff5b10c902575332e8bbdd616f9` 与字节数 29816）。
 - **当前 blocker**：**环境 blocker，非代码 blocker**——需要可用的 VMware + 内网发送端屏幕 + 外网截图三件套；代码层面无 blocker。
@@ -406,3 +407,24 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **下一步最佳动作**：
   1. 用户手动浏览器测试：打开真实 sqr_sender.html → 点 Save ZIP → 用接收端 GUI 步骤③ 或 CLI `decode` 解码验证。
   2. 按需提交本轮改动（需用户批准）。
+
+### Session 011 — 重新打包内网发送端
+
+- **日期**：2026-08-15
+- **本轮目标**：生成可带入内网使用的 Tier 1 完整发送端压缩包，并从解压后的包内实际启动验证。
+- **已完成**：
+  1. 移除 `send.sh` / `send.bat` 中过时的 tkinter 自检；当前发送端使用浏览器 HTML 播放，不再需要 tkinter。
+  2. 更新包内 `README.txt`：说明默认生成 `sqr_sender.html`、浏览器打开播放、Save ZIP 导出 PNG，并更新当前 CLI 参数。
+  3. 重新生成 `dist/sqr-sender-src.zip`：约 54 KB，37 files，vendor qrcode 24 个 Python 文件。
+  4. 根据内网报错修复 Python 3.6 兼容性：用 `typing.NamedTuple` 替代 Python 3.7+ `dataclasses`，移除 `future annotations`，把新式 union/容器标注改为 `typing` 形式，并移除 Python 3.7 才支持的 `add_subparsers(required=True)`。
+  5. 新增并扩展 `tests/test_sender_bundle_compat.py` 5 项回归测试，防止再引入旧 Python 不支持的语法/typing 特性或 tkinter 依赖。
+  6. 根据内网环境将 `send.sh` 设为优先使用 `/opt/devtoolset/python3.9.12/bin/python3`；该路径不存在时回退 `python3`，仍可用 `PYTHON=/path/to/python3` 手动覆盖。
+  7. 递归检查 vendor 24 个 Python 文件，移除 `typing.Literal` 与 PEP 585 内建容器标注等旧 Python 不兼容项。
+- **运行过的验证**：
+  - `.venv/bin/python -m pytest tests/test_sender_bundle_compat.py -q` → **5 passed**。
+  - `.venv/bin/python -m pytest tests/ -q` → **155 passed**。
+  - 从 zip 解压到临时目录后 `./send.sh --help` → 环境自检通过，CLI help 正常。
+  - 解压包内 `./send.sh sample_small.txt --html-cycle sample_sender.html` → 成功生成 2 帧 HTML，确认 `SQR Cycle` / `Auto: ON` / `Save ZIP` 存在。
+- **更新过的文件或工件**：`launcher/send.sh`、`launcher/send.bat`、`build/bundle_sender.py`、`sqr/protocol.py`、`sqr/cli.py`、`sqr/sender/{compressor,chunker,qr_render}.py`、`sqr/vendor/__init__.py`、`tests/test_sender_bundle_compat.py`、`dist/sqr-sender-src.zip`、`feature_list.json`、`claude-progress.md`。
+- **已知风险**：Windows `send.bat` 在 macOS 上无法实跑，但与已验证的 shell 启动链路使用同一 Python/vendor 入口。这是源码包，内网机器仍需 Python 3.6+ 和现代浏览器；无 Python 环境需完成 t2 PyInstaller 打包。
+- **提交记录**：本轮改动将通过 `codex/sender-python39-bundle` 分支发布。
