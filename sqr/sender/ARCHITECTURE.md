@@ -39,7 +39,7 @@ build_all_frames(filename, raw, sha256, md5, max_chars, use_zstd)   ← chunker.
 
 **帧序列设计**：manifest 帧（index=0）和所有数据帧（index=1..N）**混在同一个 HTML 循环里反复播放**，让接收端无论从哪一帧开始截图都能逐步补齐。
 
-发送目录时，信息包内的 `.sqr-bundle.json` 保存根目录、规范化相对路径、空目录、文件大小和逐文件 SHA-256；符号链接与特殊文件在打包阶段拒绝。信息包随后完全复用单文件 SQ1 链路。
+发送目录时，信息包内的 `.sqr-bundle.json` 保存根目录、规范化相对路径、空目录、文件大小和逐文件 SHA-256。目录内部的符号链接文件/目录不跟随并跳过；根目录本身为符号链接以及 FIFO/socket/device 等特殊文件仍拒绝。信息包随后完全复用单文件 SQ1 链路。
 
 `--include-regex` 可重复传入，对文件 basename 执行 `re.search`，多个表达式按
 OR。启用后，bundle 只保留匹配文件及其祖先目录；可用 `(?i)` 开启忽略大小写。

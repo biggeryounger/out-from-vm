@@ -50,7 +50,7 @@ class TestBundleBuilder:
             assert index["entry_count"] == 6
             assert "资料 tree/nested/empty/" in archive.namelist()
 
-    def test_rejects_symlink(self, tmp_path):
+    def test_skips_internal_symlink(self, tmp_path):
         source = tmp_path / "source"
         source.mkdir()
         target = tmp_path / "target.txt"
@@ -59,8 +59,9 @@ class TestBundleBuilder:
             os.symlink(str(target), str(source / "link.txt"))
         except (OSError, NotImplementedError):
             pytest.skip("symlinks are unavailable on this platform")
-        with pytest.raises(ValueError, match="symbolic links"):
-            build_directory_bundle(source)
+        built = build_directory_bundle(source)
+        assert built.skipped_symlink_count == 1
+        assert built.file_count == 0
 
     def test_include_regex_matches_basename_and_keeps_ancestors(self, tmp_path):
         source = _sample_tree(tmp_path)

@@ -273,8 +273,8 @@
         "python3 -m pytest tests/ -q 全绿，单文件传输零回归",
         "CLI 烟雾：send <directory> 生成 HTML，decode 后在输出父目录下恢复同名根目录"
       ],
-      "evidence": "166 passed in 4.95s（原 155 + 新增 11）；test_bundle.py + test_directory_roundtrip.py 合计 11 passed，覆盖确定性打包、Unicode/二进制/空文件/空目录、符号链接拒绝、目标冲突、路径穿越、篡改检测与 QR image 目录 round-trip。CLI 烟雾：source 目录 2 文件/3 目录/53338 文件字节 → 54530B bundle → 3 PPM 帧 → decode SUCCESS → /restored/source，diff -r identical。dist 源码包约 58KB，从 dist/sqr-sender/send.sh 直接发送目录成功。",
-      "notes": "M1 使用 stdlib ZIP_STORED 作为内部容器、现有 gzip/zstd 作为外层压缩；信息包内 .sqr-bundle.json 保存规范化目录清单与逐文件 SHA-256。默认拒绝符号链接/特殊文件，接收端手工安全解包到临时目录并原子提交；大型目录断点续收/分卷留给 t5/M2。"
+      "evidence": "166 passed in 4.95s（原 155 + 新增 11）；test_bundle.py + test_directory_roundtrip.py 合计 11 passed，覆盖确定性打包、Unicode/二进制/空文件/空目录、目标冲突、路径穿越、篡改检测与 QR image 目录 round-trip。CLI 烟雾：source 目录 2 文件/3 目录/53338 文件字节 → 54530B bundle → 3 PPM 帧 → decode SUCCESS → /restored/source，diff -r identical。dist 源码包约 58KB，从 dist/sqr-sender/send.sh 直接发送目录成功。内部软链接策略后由 t14 更新为跳过。",
+      "notes": "M1 使用 stdlib ZIP_STORED 作为内部容器、现有 gzip/zstd 作为外层压缩；信息包内 .sqr-bundle.json 保存规范化目录清单与逐文件 SHA-256。内部软链接由 t14 规定为不跟随并跳过；根目录软链接/其他特殊文件仍拒绝。接收端手工安全解包到临时目录并原子提交；大型目录断点续收/分卷留给 t5/M2。"
     },
     {
       "id": "t12-directory-filename-regex-filter",
@@ -307,6 +307,22 @@
       ],
       "evidence": "173 passed in 5.20s（171 基线 + tests/test_receiver_app.py 2 项）；目录选择 helper 验证选中路径写入 output_var 并记录父目录语义、取消时不改原值；import sqr.receiver.app OK。GUI 代码输出区包含独立“选择文件…”与“选择目录…”按钮，busy 状态同步禁用；完成回调沿用 restorer 返回的实际根目录 path。视觉工具受本机多个同 bundle Python/Tk 旧窗口干扰，只聚焦到旧实例，未把该截图计为新界面证据。",
       "notes": "不改变后端语义：普通文件时 output 是目标文件；目录包时 output 是父目录，restorer 返回并展示实际 <output>/<root_name>。"
+    },
+    {
+      "id": "t14-skip-internal-symlinks",
+      "priority": 10,
+      "area": "sender",
+      "title": "目录打包时排除内部软链接",
+      "user_visible_behavior": "发送目录包含软链接文件或软链接目录时不再失败；发送端不跟随链接，直接排除并显示跳过数量",
+      "status": "passing",
+      "verification": [
+        "新增独立测试覆盖软链接文件与软链接目录均被跳过且目标内容不泄漏",
+        "根目录本身为软链接仍拒绝",
+        "正则筛选与普通目录打包零回归",
+        "重建 Tier 1 发送包并实跑含软链接目录"
+      ],
+      "evidence": "176 passed in 5.02s（173 基线 + tests/test_bundle_symlinks.py 3 项）；内部软链接文件/目录跳过、链接目标不泄漏、根目录软链接拒绝、正则不会纳入匹配软链接均通过。CLI：含 1 软链接文件 + 1 软链接目录的 source → Files 1 / Folders 2 / Symlinks skipped 2 → 2 PPM → decode SUCCESS，只恢复 real-dir/keep.tcl。重建的 dist/sqr-sender/send.sh 同场景成功。",
+      "notes": "内部软链接无论是否指向目录都只计数并跳过；os.walk 不进入软链接目录。FIFO/socket/device 等非软链接特殊文件仍拒绝。"
     }
   ]
 }

@@ -112,7 +112,8 @@ SQ1|<file_id>|<index>|<total>|<crc32:08x>|<payload>
 SHA-256；随后仍走原有 gzip/zstd、Base64、SQ1 分片和 QR 渲染。接收端先校验
 整包 SHA-256，再由 `sqr.bundle.extractor` 拒绝绝对路径、`..`、反斜杠、盘符、
 重复路径及清单外成员，解包到 `.sqr-partial-*`，全部逐文件校验通过后原子发布
-根目录。符号链接与特殊文件在发送端直接拒绝。
+根目录。所选根目录本身若为符号链接会拒绝；目录内部的符号链接文件和目录不跟随、
+不打包，并在发送统计中显示跳过数量。FIFO/socket/device 等特殊文件仍拒绝。
 
 可重复的 `send --include-regex <pattern>` 在目录扫描阶段用 Python `re.search`
 匹配文件 basename；多个 pattern 按 OR。启用筛选后，只把匹配文件及其必要祖先

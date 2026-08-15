@@ -44,6 +44,8 @@ def cmd_send(args: argparse.Namespace) -> int:
         print(f"Folders:   {bundle.directory_count}")
         print(f"File bytes:{bundle.total_file_bytes}")
         print(f"Bundle:    {len(raw)} bytes")
+        if bundle.skipped_symlink_count:
+            print(f"Symlinks:  skipped {bundle.skipped_symlink_count}")
         if args.include_regex:
             print(f"Filters:   {' OR '.join(args.include_regex)}")
     elif file_path.is_file():

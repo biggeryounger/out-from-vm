@@ -104,8 +104,8 @@ Usage (Windows):
   send.bat <file-or-directory>
 
 Directories are packed with their selected root name, nested structure,
-regular files, empty files, and empty directories. Symbolic links and special
-filesystem entries are rejected. The receiver restores a directory bundle
+regular files, empty files, and empty directories. Internal symbolic links are
+skipped without being followed; special filesystem entries are rejected. The receiver restores a directory bundle
 under the output parent directory after full integrity verification.
 
 The default command writes sqr_sender.html in the current directory.

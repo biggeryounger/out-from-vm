@@ -19,7 +19,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - 接收端（屏幕）：`python3 -m sqr.cli receive --output <path>`（文件时为输出文件；目录包时为输出父目录）
   - 接收端（image 批量）：`python3 -m sqr.cli decode --images <dir> --output <path>`（扫描目录 PPM/PNG/JPG 批量解码；自动写文件或安全还原目录）
   - 打包产物：`dist/sqr-sender-src.zip`（约 58 KB，解压后 `./send.sh <file-or-directory>`）
-- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **173 passed**）
+- **标准验证路径**：`python3 -m pytest tests/ -q`（当前基线 **176 passed**）
 - **Phase 完成情况**：Phase 1–6 **全部完成**
   - P1 协议核心（`sqr/protocol.py` / `sqr/sender/compressor.py` / `sqr/sender/chunker.py`）
   - P2 vendor + QR 渲染（`sqr/vendor/qrcode/` + `sqr/sender/qr_render.py`，PIL stub 实现 zero-install）
@@ -28,7 +28,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - P5 打包与启动器（`build/bundle_sender.py` + `launcher/`）
   - P6 GUI 区域选择器（`sqr/receiver/region_selector.py`）
   - 各 Phase 详细设计见 `implementation-plan.md` §4 + §14
-- **测试覆盖**（当前 173 项）：
+- **测试覆盖**（当前 176 项）：
 
   | 测试文件 | 数量 | 覆盖范围 |
   |---|---|---|
@@ -40,9 +40,10 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   | `test_image_decoder.py` | 8 | **run_receiver_from_images：round-trip + 顺序无关 + manifest/数据帧缺失 + 回调（t9 新增）** |
   | `test_roundtrip.py` | 10 | 文件→QR→解码→校验 端到端（3 fixture） |
   | `test_sender_bundle_compat.py` | 5 | Python 3.6 语法、无新式 typing 运行时依赖、启动器无 tkinter、优先内网 Python 3.9 |
-  | `test_bundle.py` | 13 | 目录确定性封装、安全解包、正则筛选、Unicode/二进制/空目录、符号链接/路径穿越/篡改拒绝 |
+  | `test_bundle.py` | 13 | 目录确定性封装、安全解包、正则筛选、Unicode/二进制/空目录、路径穿越/篡改拒绝 |
   | `test_directory_roundtrip.py` | 3 | 目录→SQ1 QR image→解码→安全还原端到端、正则筛选 round-trip、损坏整包不发布 |
   | `test_receiver_app.py` | 2 | GUI 目录包保存父目录选择、取消不改输出路径（无 Tk 窗口 helper 测试） |
+  | `test_bundle_symlinks.py` | 3 | 内部软链接文件/目录跳过且不泄漏目标、根目录软链接拒绝、正则不纳入软链接 |
 
 - **当前最高优先级未完成功能**：**真实屏幕端到端验证**（VMware + 物理 QR 播放/截屏环境下跑完整 round-trip，校验 MD5 `fd3b2ff5b10c902575332e8bbdd616f9` 与字节数 29816）。
 - **当前 blocker**：**环境 blocker，非代码 blocker**——需要可用的 VMware + 内网发送端屏幕 + 外网截图三件套；代码层面无 blocker。
@@ -67,6 +68,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 | 目录信息包传输 | `t11-directory-bundle-transfer` | passing | 15 | 保留指定根目录、嵌套结构、普通/二进制/空文件和空目录；整包 + 逐文件 SHA-256；安全临时解包后原子发布 — 166 passed |
 | 目录文件名正则筛选 | `t12-directory-filename-regex-filter` | passing | 15 | 可重复 `--include-regex`；basename `re.search`、多个 OR，只保留匹配文件及必要祖先目录 — 171 passed |
 | GUI 目录包保存目录 | `t13-gui-directory-output-picker` | passing | 10 | 输出区提供“选择文件…”/“选择目录…”；目录包选父目录，完成后显示实际根目录 — 173 passed |
+| 目录内部软链接排除 | `t14-skip-internal-symlinks` | passing | 10 | 内部软链接文件/目录不跟随并跳过，显示计数；根目录软链接仍拒绝 — 176 passed |
 
 ---
 
@@ -442,7 +444,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **启动基线**：系统 `python3` 缺 pytest；改用仓库 `.venv/bin/python`，全量 **155 passed in 4.66s**。工作区原有未跟踪 `sqr_output.txt` / `sqr_sender.html`，保持不动。
 - **已完成**：
   1. 新增 `sqr/bundle/{builder,extractor}.py`：确定性 ZIP_STORED 信息包，`.sqr-bundle.json` 记录根目录、规范化路径、文件大小与逐文件 SHA-256；保留 Unicode、二进制/空文件及空目录。
-  2. 打包阶段拒绝符号链接和特殊文件，并检测读取期间发生变化的文件；绝对内网路径不会写入信息包。
+  2. 初版在打包阶段拒绝符号链接和特殊文件；后续 t14 将内部软链接改为不跟随并跳过，根目录软链接和其他特殊文件仍拒绝。绝对内网路径不会写入信息包。
   3. 新增 `sqr/receiver/restorer.py`，屏幕接收与 image 解码共用同一恢复边界；整包 SHA-256/MD5/字节数通过后，目录包手工安全解包到 `.sqr-partial-*`，逐文件校验通过后原子发布。
   4. 解包拒绝绝对路径、`..`、反斜杠、盘符、NUL、重复路径、清单外成员和超限展开；目标根目录已存在时默认失败且不覆盖。
   5. `sqr.cli send` 位置参数扩展为 UTF-8 文件或目录；目录包接收时 `--output` 表示输出父目录。单文件行为保持不变。
@@ -454,7 +456,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - CLI：2 文件/3 目录/53338 文件字节 → 54530B bundle → 3 PPM 帧 → `decode` SUCCESS → `restored/source`；`diff -r` identical。
   - 重建后 `./dist/sqr-sender/send.sh <directory> --html-cycle ...` 实跑成功，生成 3 帧 Auto:ON HTML。
 - **更新过的文件或工件**：`sqr/bundle/`、`sqr/receiver/restorer.py`、`sqr/{cli.py,receiver/{runner,image_decoder,verifier}.py}`、3 份 ARCHITECTURE.md、`tests/{test_bundle,test_directory_roundtrip,test_sender_bundle_compat}.py`、`build/bundle_sender.py`、`dist/sqr-sender-src.zip`、`feature_list.json`、本文件。
-- **已知风险或后续范围**：M1 仍将完整 bundle/Base64/QR matrices 放在内存中；真正的大目录需要 `t5`/M2 的磁盘持久化、断点续收、分卷和 HTML 延迟加载。符号链接、权限、owner/ACL/xattr 不在 M1 支持范围。真实屏幕目录 round-trip 仍依赖 `t1` 的 VMware 环境。
+- **已知风险或后续范围**：M1 仍将完整 bundle/Base64/QR matrices 放在内存中；真正的大目录需要 `t5`/M2 的磁盘持久化、断点续收、分卷和 HTML 延迟加载。软链接由 t14 排除，不还原；权限、owner/ACL/xattr 不在 M1 支持范围。真实屏幕目录 round-trip 仍依赖 `t1` 的 VMware 环境。
 - **提交记录**：本轮以 `feat(bundle): transfer directory trees safely via SQ1 — 166 tests pass` 提交。
 - **下一步最佳动作**：有 VMware 环境时做真实屏幕目录 round-trip；否则推进 `t5-large-file-transfer` 的持久化/分卷设计。
 
@@ -475,7 +477,7 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
   - 非法 `--include-regex '['` → exit 1 + 友好错误。
   - 重建后的 `dist/sqr-sender/send.sh ... --include-regex '^hello'` → 仅 1 文件/1 目录，生成 2 帧 HTML。
 - **更新过的文件或工件**：`sqr/bundle/builder.py`、`sqr/cli.py`、`tests/{test_bundle,test_directory_roundtrip}.py`、`build/bundle_sender.py`、`dist/sqr-sender-src.zip`、顶层/发送端 ARCHITECTURE.md、`feature_list.json`、本文件。
-- **已知边界**：筛选只匹配 basename，不匹配相对路径；默认大小写敏感，可用 `(?i)`；当前只有 include，没有 exclude。正则只影响普通文件，扫描期间遇到任何符号链接/特殊文件仍按安全规则拒绝整个目录。
+- **已知边界**：筛选只匹配 basename，不匹配相对路径；默认大小写敏感，可用 `(?i)`；当前只有 include，没有 exclude。正则只影响普通文件；t14 起内部软链接跳过，其他特殊文件仍拒绝。
 - **提交记录**：本轮以 `feat(bundle): filter directory files by regex — 171 tests pass` 提交。
 
 ### Session 014 — GUI 目录包保存父目录选择器（t13-gui-directory-output-picker）
@@ -496,3 +498,22 @@ coding agent 都可以在开工时读取、交接前更新；agent 不会自动�
 - **视觉核验说明**：按 computer-use 技能启动新 GUI，但本机已有多个相同 Python bundle 的旧 Tk 进程，界面工具只能聚焦旧实例；未把旧界面截图作为新版本证据，也未关闭可能属于用户的旧窗口。新进程已停止。
 - **更新过的文件**：`sqr/receiver/app.py`、`sqr/receiver/ARCHITECTURE.md`、`tests/test_receiver_app.py`、`feature_list.json`、本文件。
 - **提交记录**：本轮以 `feat(gui): choose parent directory for bundle restore — 173 tests pass` 提交。
+
+### Session 015 — 目录内部软链接排除（t14-skip-internal-symlinks）
+
+- **日期**：2026-08-15
+- **本轮目标**：目录扫描遇到内部软链接文件/目录时从信息包排除，不跟随、不失败；根目录本身为软链接仍拒绝，并显示跳过数量。
+- **启动基线**：工作区测试文件存在用户侧 mode 100644→100755 变更及 `tests/user_case/dir_case/` 测试产物，内容未变；全部保持不动。`.venv/bin/python -m pytest tests/ -q` → **173 passed in 5.11s**。
+- **已完成**：
+  1. `build_directory_bundle` 遍历 `dir_names` 时移除软链接目录，遍历文件时跳过软链接文件；两者都不读取、不跟随，并累计 `skipped_symlink_count`。
+  2. `BundleBuildResult` 增加跳过计数；CLI 在存在软链接时打印 `Symlinks: skipped N`。
+  3. 所选根目录本身为软链接继续拒绝；FIFO/socket/device 等非软链接特殊文件继续拒绝。
+  4. 新增独立 `tests/test_bundle_symlinks.py`，避免覆盖用户当前对原测试文件的权限调整；旧 `test_bundle.py` 冲突断言仅更新为新策略。
+  5. 更新架构与包内 README，重建 `dist/sqr-sender-src.zip`（约 59KB）。
+- **运行过的验证**：
+  - `tests/test_bundle_symlinks.py` → **3 passed**；bundle + directory roundtrip 组合 → **19 passed**。
+  - `.venv/bin/python -m pytest tests/ -q` → **176 passed in 5.02s**。
+  - CLI 实测：1 软链接文件 + 1 软链接目录 + 1 普通 `.tcl` → `Symlinks: skipped 2`，生成 2 帧；decode SUCCESS 后仅有 `real-dir/keep.tcl`。
+  - 重建后的 `dist/sqr-sender/send.sh` 在同一含软链接目录上运行成功并显示 skipped 2。
+- **更新过的文件或工件**：`sqr/bundle/builder.py`、`sqr/cli.py`、`tests/test_bundle_symlinks.py`、`tests/test_bundle.py`（仅断言更新，用户 chmod 保留）、顶层/发送端 ARCHITECTURE.md、`build/bundle_sender.py`、`dist/sqr-sender-src.zip`、`feature_list.json`、本文件。
+- **提交记录**：本轮以 `fix(bundle): skip internal symlinks safely — 176 tests pass` 提交；不包含用户测试产物与测试文件权限变更。

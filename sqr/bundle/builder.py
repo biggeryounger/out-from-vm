@@ -21,6 +21,7 @@ class BundleBuildResult(NamedTuple):
     file_count: int
     directory_count: int
     total_file_bytes: int
+    skipped_symlink_count: int
 
 
 def _zip_info(name, is_dir=False):
@@ -46,8 +47,9 @@ def _validate_component(name):
 def build_directory_bundle(source, include_regexes=None):
     """Return a deterministic bundle for *source* without exposing absolute paths.
 
-    Only regular files and directories are accepted. Symlinks and special files
-    are rejected because recreating them safely across platforms is ambiguous.
+    Only regular files and directories are packed. Internal symlinks are counted
+    and skipped without being followed; a symlink used as the selected root and
+    non-symlink special files are rejected.
     If include_regexes is non-empty, a file is included when re.search against
     its basename matches any expression; only required ancestor dirs are kept.
     """
@@ -68,6 +70,7 @@ def build_directory_bundle(source, include_regexes=None):
     entries = []  # type: List[Dict[str, object]]
     payloads = {}  # type: Dict[str, bytes]
     directory_paths = {root_name}
+    skipped_symlink_count = 0
 
     for current, dir_names, file_names in os.walk(str(source), followlinks=False):
         current_path = Path(current)
@@ -78,7 +81,9 @@ def build_directory_bundle(source, include_regexes=None):
             _validate_component(name)
             path = current_path / name
             if path.is_symlink():
-                raise ValueError("symbolic links are not supported: %s" % path)
+                dir_names.remove(name)
+                skipped_symlink_count += 1
+                continue
             mode = path.stat().st_mode
             if not stat.S_ISDIR(mode):
                 raise ValueError("special filesystem entry is not supported: %s" % path)
@@ -90,7 +95,8 @@ def build_directory_bundle(source, include_regexes=None):
             _validate_component(name)
             path = current_path / name
             if path.is_symlink():
-                raise ValueError("symbolic links are not supported: %s" % path)
+                skipped_symlink_count += 1
+                continue
             before = path.stat()
             if not stat.S_ISREG(before.st_mode):
                 raise ValueError("special filesystem entry is not supported: %s" % path)
@@ -144,5 +150,6 @@ def build_directory_bundle(source, include_regexes=None):
                 archive.writestr(_zip_info(name), payloads[name])
 
     return BundleBuildResult(
-        stream.getvalue(), root_name, file_count, directory_count, total_bytes
+        stream.getvalue(), root_name, file_count, directory_count, total_bytes,
+        skipped_symlink_count,
     )
